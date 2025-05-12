@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Fleetman",
-    "slug": "Fleetman",
+    "name": "TestApp",
+    "slug": "TestApp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,14 +13,18 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.fleetman.Testapp",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "package": "com.fleetman.Fleetman",
+      "package": "com.fleetman.Testapp",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-            },
+      },
       "edgeToEdgeEnabled": true
     },
     "web": {
