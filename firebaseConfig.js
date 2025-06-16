@@ -1,5 +1,4 @@
-// THIS FILE IS UNNECESSARY AND ONLY FOR WEB APPS - LEAVING IT HERE IF WE DECIDE TO MAKE IT A WEB APP TOO
-// I will fill everything out if we make a web app.
+// This file I think is only for web-apps, but I'm not sure.
 
 import { initializeApp } from 'firebase/app';
 
@@ -9,12 +8,12 @@ import { initializeApp } from 'firebase/app';
 
 // Initialize Firebase
 const firebaseConfig = {
-  apiKey: 'api-key',
-  authDomain: 'project-id.firebaseapp.com',
-  databaseURL: 'https://project-id.firebaseio.com',
+  apiKey: 'AIzaSyAsz0bA7E_ZBQdPUDza70lMkFEqX57T-8U', // filled in
+  authDomain: 'fleetman-8613c.firebaseapp.com', // filled in
+  databaseURL: 'https://fleetman-8613c-default-rtdb.firebaseio.com/', // filled in
   projectId: 'fleetman-8613c', // filled in
-  storageBucket: 'project-id.appspot.com',
-  messagingSenderId: 'sender-id',
+  storageBucket: 'fleetman-8613c.appspot.com', // filled in
+  messagingSenderId: 'sender-id', // ?
   appId: '1:996148492925:android:44dbbca68d2e4f8e4b8f14', // filled in
   measurementId: 'G-measurement-id', // this is for google analytics I turned this off.
 };
