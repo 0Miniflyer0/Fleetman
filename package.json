@@ -10,15 +10,16 @@
   },
   "dependencies": {
     "@expo/metro-runtime": "~5.0.4",
-    "expo": "~53.0.7",
+    "@react-navigation/bottom-tabs": "^7.3.14",
+    "@react-navigation/native": "^7.1.10",
+    "expo": "53.0.11",
     "expo-status-bar": "~2.2.3",
-    "expo-updates": "^0.28.13",
+    "expo-updates": "~0.28.14",
     "firebase": "^11.8.1",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.2",
-    "react-native-web": "^0.20.0",
-    "yarn": "^1.22.22"
+    "react-native-web": "^0.20.0"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0"

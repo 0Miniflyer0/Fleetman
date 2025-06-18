@@ -1,11 +1,6 @@
-// App.js
-import { StatusBar } from 'expo-status-bar';
+import 'react-native-gesture-handler';
 import React from 'react';
 import { StyleSheet, Text, View, Button, Alert } from 'react-native';
-import './firebaseConfig';
-import { getDatabase, ref, set } from 'firebase/database';
-
-
 
 export default function App() {
   const testFirebase = async () => {
@@ -24,7 +19,7 @@ export default function App() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>🚀 Hello from Expo!</Text>
-      <Button title="Test Firebase" onPress={testFirebase} />
+      <Button title="Press me" onPress={() => Alert.alert('Button pressed!')} />
       <StatusBar style="auto" />
     </View>
   );
