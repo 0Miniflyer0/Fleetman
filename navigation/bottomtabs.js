@@ -9,7 +9,7 @@ export default function BottomTabs() {
   return (
     <Tab.Navigator>
       <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen name="Vehicle" component={SettingsScreen} />
     </Tab.Navigator>
   );
 }

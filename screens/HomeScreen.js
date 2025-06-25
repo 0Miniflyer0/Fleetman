@@ -5,7 +5,7 @@ import { StyleSheet, Text, View, Button, Alert } from 'react-native';
 export default function HomeScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Wait it actually worked?</Text>
+      <Text style={styles.title}>This is the homepage </Text>
       <Button title="Press me" onPress={() => Alert.alert('Dang it (finally) worked.')} />
     </View>
   );
