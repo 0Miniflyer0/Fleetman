@@ -1,39 +1,26 @@
+// App.js
 import 'react-native-gesture-handler';
 import React from 'react';
-import { StyleSheet, Text, View, Button, Alert } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { StatusBar } from 'expo-status-bar';
+
+// Screens
+import HomeScreen from './screens/HomeScreen';
+import MaintenanceScreen from './screens/MaintenanceScreen'; 
+import VehiclesScreen from './screens/VehiclesScreen';
+
+const Tab = createBottomTabNavigator();
 
 export default function App() {
-  const testFirebase = async () => {
-    try {
-      const db = getDatabase();
-      await set(ref(db, 'test'), {
-        timestamp: Date.now(),
-        message: 'Hello from Fleetman!',
-      });
-      alert('Firebase write succeeded!');
-    } catch (e) {
-      alert('Firebase write failed: ' + e.message);
-    }
-  };
-
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>🚀 Hello from Expo!</Text>
-      <Button title="Press me" onPress={() => Alert.alert('Button pressed!')} />
+    <NavigationContainer>
+      <Tab.Navigator>
+        <Tab.Screen name="Home" component={HomeScreen} />
+        <Tab.Screen name="Vehicles" component={VehiclesScreen} />
+        <Tab.Screen name="Maintenance" component={MaintenanceScreen} /> 
+      </Tab.Navigator>
       <StatusBar style="auto" />
-    </View>
+    </NavigationContainer>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: 24,
-    marginBottom: 20,
-  },
-});
