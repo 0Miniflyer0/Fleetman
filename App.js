@@ -8,7 +8,8 @@ import { getDatabase, ref, set } from 'firebase/database';
 
 // Screens
 import HomeScreen from './screens/HomeScreen';
-import SettingsScreen from './screens/Vehicle';
+import VehicleScreen from './screens/Vehicle';
+import MaintenanceScreen from './screens/Maintenance';
 
 const Tab = createBottomTabNavigator();
 
@@ -40,8 +41,8 @@ export default function App() {
     <NavigationContainer>
       <Tab.Navigator>
         <Tab.Screen name="Home" component={HomeScreen} />
-        <Tab.Screen name="Vehicle" component={SettingsScreen} />
-        <Tab.Screen name="Maintence" component={FirebaseTestScreen} />
+        <Tab.Screen name="Vehicle" component={VehicleScreen} />
+        <Tab.Screen name="Maintenance" component={MaintenanceScreen} />
       </Tab.Navigator>
       <StatusBar style="auto" />
     </NavigationContainer>
