@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,15 +10,10 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-
-const initialVehicles = [
-  { id: '1', name: 'Truck 1', color: 'Red', license: 'ABC123' },
-  { id: '2', name: 'Van 2', color: 'Blue', license: 'XYZ789' },
-  { id: '3', name: 'Car 3', color: 'White', license: 'LMN456' },
-];
+import { getDatabase, ref, onValue } from 'firebase/database';
 
 export default function VehicleScreen() {
-  const [vehicles, setVehicles] = useState(initialVehicles);
+  const [vehicles, setVehicles] = useState([]);
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState('name');
   const [modalVisible, setModalVisible] = useState(false);
@@ -26,16 +21,37 @@ export default function VehicleScreen() {
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [form, setForm] = useState({ name: '', color: '', license: '' });
 
+  // Fetch vehicles from Firebase
+  useEffect(() => {
+    const db = getDatabase();
+    const vehiclesRef = ref(db, 'fleetOne');
+    const unsubscribe = onValue(vehiclesRef, snapshot => {
+      const data = snapshot.val();
+      if (data) {
+        const loaded = Object.values(data).map(vehicle => ({
+          id: vehicle.id,
+          name: vehicle.name,
+          color: vehicle.color || 'N/A',
+          license: vehicle.liciencePlate || 'N/A',
+        }));
+        setVehicles(loaded);
+      } else {
+        setVehicles([]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Filter and sort vehicles
   const filteredVehicles = vehicles
     .filter(
       v =>
-        v.name.toLowerCase().includes(search.toLowerCase()) ||
-        v.license.toLowerCase().includes(search.toLowerCase())
+        v.name?.toLowerCase().includes(search.toLowerCase()) ||
+        v.license?.toLowerCase().includes(search.toLowerCase())
     )
-    .sort((a, b) => a[sortKey].localeCompare(b[sortKey]));
+    .sort((a, b) => (a[sortKey] || '').localeCompare(b[sortKey] || ''));
 
-  // Add or edit vehicle
+  // Add or edit vehicle (local only, not saved to Firebase)
   const handleSave = () => {
     if (!form.name || !form.color || !form.license) {
       Alert.alert('All fields are required.');
@@ -52,7 +68,7 @@ export default function VehicleScreen() {
     setDetailModalVisible(false);
   };
 
-  // Delete vehicle
+  // Delete vehicle (local only, not deleted from Firebase)
   const handleDelete = id => {
     Alert.alert('Delete Vehicle', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },

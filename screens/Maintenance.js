@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -10,15 +10,10 @@ import {
     StyleSheet,
     Alert,
 } from 'react-native';
-
-const initialRecords = [
-    { id: '1', vehicle: 'Truck 1', service: 'Oil Change', mileage: '12000' },
-    { id: '2', vehicle: 'Van 2', service: 'Tire Rotation', mileage: '8000' },
-    { id: '3', vehicle: 'Car 3', service: 'Brake Inspection', mileage: '15000' },
-];
+import { getDatabase, ref, onValue } from 'firebase/database';
 
 export default function MaintenanceScreen() {
-    const [records, setRecords] = useState(initialRecords);
+    const [records, setRecords] = useState([]);
     const [search, setSearch] = useState('');
     const [sortKey, setSortKey] = useState('vehicle');
     const [modalVisible, setModalVisible] = useState(false);
@@ -26,16 +21,38 @@ export default function MaintenanceScreen() {
     const [selectedRecord, setSelectedRecord] = useState(null);
     const [form, setForm] = useState({ vehicle: '', service: '', mileage: '' });
 
+    // Fetch vehicles from Firebase
+    useEffect(() => {
+        const db = getDatabase();
+        const vehiclesRef = ref(db, 'fleetOne');
+        const unsubscribe = onValue(vehiclesRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                // Flatten vehicles into records for display
+                const loaded = Object.values(data).map(vehicle => ({
+                    id: vehicle.id,
+                    vehicle: vehicle.name,
+                    service: vehicle.maintence?.serviceHistory?.[vehicle.maintence?.serviceHistory.length - 1]?.details || 'N/A',
+                    mileage: vehicle.milage?.toString() || 'N/A',
+                }));
+                setRecords(loaded);
+            } else {
+                setRecords([]);
+            }
+        });
+        return () => unsubscribe();
+    }, []);
+
     // Filter and sort records
     const filteredRecords = records
         .filter(
             r =>
-                r.vehicle.toLowerCase().includes(search.toLowerCase()) ||
-                r.service.toLowerCase().includes(search.toLowerCase())
+                r.vehicle?.toLowerCase().includes(search.toLowerCase()) ||
+                r.service?.toLowerCase().includes(search.toLowerCase())
         )
-        .sort((a, b) => a[sortKey].localeCompare(b[sortKey]));
+        .sort((a, b) => a[sortKey]?.localeCompare(b[sortKey]));
 
-    // Add or edit record
+    // Add or edit record (local only, not saved to Firebase)
     const handleSave = () => {
         if (!form.vehicle || !form.service || !form.mileage) {
             Alert.alert('All fields are required.');
@@ -52,7 +69,7 @@ export default function MaintenanceScreen() {
         setDetailModalVisible(false);
     };
 
-    // Delete record
+    // Delete record (local only, not deleted from Firebase)
     const handleDelete = id => {
         Alert.alert('Delete Record', 'Are you sure?', [
             { text: 'Cancel', style: 'cancel' },

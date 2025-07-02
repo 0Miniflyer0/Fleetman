@@ -1,94 +1,135 @@
-import React from 'react';
-import { StyleSheet, Text, View, ScrollView, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, TextInput, FlatList, Dimensions } from 'react-native';
 import { LineChart, PieChart } from 'react-native-chart-kit';
+import { getDatabase, ref, onValue } from 'firebase/database';
 
 const screenWidth = Dimensions.get('window').width;
 
 export default function HomeScreen() {
+  const [reminders, setReminders] = useState([]);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    const db = getDatabase();
+    // Adjust the path if your fleet name is dynamic
+    const vehiclesRef = ref(db, 'fleetOne');
+    const unsubscribe = onValue(vehiclesRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        // Flatten vehicles into reminders
+        const loaded = Object.values(data).map(vehicle => ({
+          id: vehicle.id,
+          vehicle: vehicle.name,
+          service: vehicle.maintence?.serviceHistory?.[vehicle.maintence?.serviceHistory.length - 1]?.details || 'N/A',
+          due: vehicle.maintence?.nextServiceDue || 'N/A',
+        }));
+        setReminders(loaded);
+      } else {
+        setReminders([]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const filteredReminders = reminders
+    .slice() // create a shallow copy to avoid mutating state
+    .sort((a, b) => {
+      // If either due is 'N/A', push it to the end
+      if (a.due === 'N/A') return 1;
+      if (b.due === 'N/A') return -1;
+      // Compare as dates
+      return new Date(a.due) - new Date(b.due);
+    })
+    .filter(
+      r =>
+        r.vehicle?.toLowerCase().includes(search.toLowerCase()) ||
+        r.service?.toLowerCase().includes(search.toLowerCase()) ||
+        r.due?.includes(search)
+    )
+    .slice(0, 5);
+
   return (
     <View style={styles.container}>
       {/* Top Search/Filter Bar */}
       <View style={styles.searchBar}>
-        <Text style={styles.searchText}>🔍 Search...</Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="🔍 Search vehicle, service, or date..."
+          value={search}
+          onChangeText={setSearch}
+        />
       </View>
 
-      {/* Scrollable Content */}
-      <ScrollView style={styles.content}>
-        {/* Reminders Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Reminders</Text>
+      {/* Reminders Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Reminders</Text>
+        <FlatList
+          data={filteredReminders}
+          keyExtractor={item => item.id}
+          style={styles.list}
+          renderItem={({ item }) => (
+            <View style={styles.reminderRow}>
+              <Text style={styles.reminderText}>{item.vehicle}</Text>
+              <Text style={styles.reminderText}>{item.service}</Text>
+              <Text style={styles.reminderText}>{item.due}</Text>
+            </View>
+          )}
+          ListHeaderComponent={
+            <View style={styles.reminderHeader}>
+              <Text style={styles.reminderText}>Vehicle</Text>
+              <Text style={styles.reminderText}>Service</Text>
+              <Text style={styles.reminderText}>Due Date</Text>
+            </View>
+          }
+          ListEmptyComponent={
+            <Text style={styles.noReminders}>No reminders found.</Text>
+          }
+        />
+      </View>
 
-          <View style={styles.reminderHeader}>
-            <Text style={styles.reminderText}>Vehicle</Text>
-            <Text style={styles.reminderText}>S.Type</Text>
-            <Text style={styles.reminderText}>Miles</Text>
-          </View>
-
-          <View style={styles.reminderRow}>
-            <Text style={styles.reminderText}>Truck 01</Text>
-            <Text style={styles.reminderText}>Oil</Text>
-            <Text style={styles.reminderText}>500</Text>
-          </View>
-
-          <View style={styles.reminderRow}>
-            <Text style={styles.reminderText}>Van 07</Text>
-            <Text style={styles.reminderText}>Tires</Text>
-            <Text style={styles.reminderText}>1200</Text>
-          </View>
-
-          <View style={styles.reminderRow}>
-            <Text style={styles.reminderText}>SUV 12</Text>
-            <Text style={styles.reminderText}>Brakes</Text>
-            <Text style={styles.reminderText}>800</Text>
-          </View>
-        </View>
-
-        {/* Dashboard Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Dashboard</Text>
-
-          <View style={styles.chartRow}>
-            {/* Pie Chart */}
-            <PieChart
-              data={[
+      {/* Dashboard Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Dashboard</Text>
+        <View style={styles.chartRow}>
+          {/* Pie Chart */}
+          <PieChart
+            data={[
+              {
+                name: 'Empty',
+                population: 1,
+                color: '#cccccc',
+                legendFontColor: '#7F7F7F',
+                legendFontSize: 12,
+              },
+            ]}
+            width={screenWidth * 0.42}
+            height={150}
+            chartConfig={chartConfig}
+            accessor="population"
+            backgroundColor="transparent"
+            paddingLeft="10"
+            hasLegend={false}
+          />
+          {/* Line Chart */}
+          <LineChart
+            data={{
+              labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+              datasets: [
                 {
-                  name: 'Empty',
-                  population: 1,
-                  color: '#cccccc',
-                  legendFontColor: '#7F7F7F',
-                  legendFontSize: 12,
+                  data: [0, 0, 0, 0, 0],
                 },
-              ]}
-              width={screenWidth * 0.42}
-              height={150}
-              chartConfig={chartConfig}
-              accessor="population"
-              backgroundColor="transparent"
-              paddingLeft="10"
-              hasLegend={false}
-            />
-
-            {/* Line Chart */}
-            <LineChart
-              data={{
-                labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-                datasets: [
-                  {
-                    data: [0, 0, 0, 0, 0],
-                  },
-                ],
-              }}
-              width={screenWidth * 0.5}
-              height={150}
-              chartConfig={chartConfig}
-              bezier
-              withDots={false}
-              withInnerLines={false}
-              withOuterLines={false}
-            />
-          </View>
+              ],
+            }}
+            width={screenWidth * 0.5}
+            height={150}
+            chartConfig={chartConfig}
+            bezier
+            withDots={false}
+            withInnerLines={false}
+            withOuterLines={false}
+          />
         </View>
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -112,9 +153,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     backgroundColor: '#e0e0e0',
   },
-  searchText: {
-    color: '#666',
+  searchInput: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 12,
     fontSize: 16,
+    height: 36,
+    borderWidth: 1,
+    borderColor: '#ccc',
   },
   content: {
     flex: 1,
@@ -122,12 +168,14 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: 30,
+    paddingHorizontal: 20,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 10,
   },
+  list: { flex: 1 },
   reminderHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -147,6 +195,11 @@ const styles = StyleSheet.create({
   reminderText: {
     flex: 1,
     textAlign: 'center',
+  },
+  noReminders: {
+    textAlign: 'center',
+    color: '#888',
+    marginTop: 20,
   },
   chartRow: {
     flexDirection: 'row',
