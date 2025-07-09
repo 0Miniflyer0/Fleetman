@@ -10,7 +10,7 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { getDatabase, ref, onValue } from 'firebase/database';
+import { getDatabase, ref, onValue, push, set } from 'firebase/database';
 
 export default function VehicleScreen() {
   const [vehicles, setVehicles] = useState([]);
@@ -19,7 +19,7 @@ export default function VehicleScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
-  const [form, setForm] = useState({ name: '', color: '', license: '' });
+  const [form, setForm] = useState({ name: '', color: '', license: '', type: '', year: '', make: '', model: '', vin: '', mileage: '' });
 
   // Fetch vehicles from Firebase
   useEffect(() => {
@@ -51,19 +51,36 @@ export default function VehicleScreen() {
     )
     .sort((a, b) => (a[sortKey] || '').localeCompare(b[sortKey] || ''));
 
-  // Add or edit vehicle (local only, not saved to Firebase)
-  const handleSave = () => {
-    if (!form.name || !form.color || !form.license) {
+  // Add or edit vehicle (now saves new vehicle to Firebase)
+  const handleSave = async () => {
+    if (!form.name || !form.color || !form.license || !form.type || !form.year || !form.make || !form.model || !form.vin || !form.mileage) {
       Alert.alert('All fields are required.');
       return;
     }
+    const db = getDatabase();
     if (selectedVehicle) {
+      // Local edit only (optional: implement Firebase update here)
       setVehicles(vehicles.map(v => (v.id === selectedVehicle.id ? { ...form, id: v.id } : v)));
       setSelectedVehicle(null);
     } else {
-      setVehicles([...vehicles, { ...form, id: Date.now().toString() }]);
+      // Add new vehicle to Firebase
+      const newVehicleRef = push(ref(db, 'fleetOne'));
+      const newVehicle = {
+        id: newVehicleRef.key,
+        name: form.name,
+        type: form.type,
+        liciencePlate: form.license,
+        mileage: Number(form.mileage),
+        year: Number(form.year),
+        make: form.make,
+        model: form.model,
+        vin: form.vin,
+        color: form.color,
+        // No maintence field yet
+      };
+      await set(newVehicleRef, newVehicle);
     }
-    setForm({ name: '', color: '', license: '' });
+    setForm({ name: '', color: '', license: '', type: '', year: '', make: '', model: '', vin: '', mileage: '' });
     setModalVisible(false);
     setDetailModalVisible(false);
   };
@@ -92,7 +109,7 @@ export default function VehicleScreen() {
 
   // Open add modal
   const openAdd = () => {
-    setForm({ name: '', color: '', license: '' });
+    setForm({ name: '', color: '', license: '', type: '', year: '', make: '', model: '', vin: '', mileage: '' });
     setSelectedVehicle(null);
     setModalVisible(true);
   };
@@ -154,6 +171,12 @@ export default function VehicleScreen() {
             />
             <TextInput
               style={styles.input}
+              placeholder="Type (e.g. Truck, Van, SUV)"
+              value={form.type}
+              onChangeText={text => setForm({ ...form, type: text })}
+            />
+            <TextInput
+              style={styles.input}
               placeholder="Color"
               value={form.color}
               onChangeText={text => setForm({ ...form, color: text })}
@@ -163,6 +186,38 @@ export default function VehicleScreen() {
               placeholder="License Plate"
               value={form.license}
               onChangeText={text => setForm({ ...form, license: text })}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Year"
+              value={form.year}
+              keyboardType="numeric"
+              onChangeText={text => setForm({ ...form, year: text })}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Make"
+              value={form.make}
+              onChangeText={text => setForm({ ...form, make: text })}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Model"
+              value={form.model}
+              onChangeText={text => setForm({ ...form, model: text })}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="VIN"
+              value={form.vin}
+              onChangeText={text => setForm({ ...form, vin: text })}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Mileage"
+              value={form.mileage}
+              keyboardType="numeric"
+              onChangeText={text => setForm({ ...form, mileage: text })}
             />
             <View style={styles.modalButtonRow}>
               <Button title="Cancel" onPress={() => setModalVisible(false)} />

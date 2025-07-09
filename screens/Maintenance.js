@@ -10,7 +10,7 @@ import {
     StyleSheet,
     Alert,
 } from 'react-native';
-import { getDatabase, ref, onValue } from 'firebase/database';
+import { getDatabase, ref, onValue, update } from 'firebase/database';
 
 export default function MaintenanceScreen() {
     const [records, setRecords] = useState([]);
@@ -19,7 +19,7 @@ export default function MaintenanceScreen() {
     const [modalVisible, setModalVisible] = useState(false);
     const [detailModalVisible, setDetailModalVisible] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState(null);
-    const [form, setForm] = useState({ vehicle: '', service: '', mileage: '' });
+    const [form, setForm] = useState({ vehicle: '', service: '', mileage: '', date: '' });
 
     // Fetch vehicles from Firebase
     useEffect(() => {
@@ -31,9 +31,11 @@ export default function MaintenanceScreen() {
                 // Flatten vehicles into records for display
                 const loaded = Object.values(data).map(vehicle => ({
                     id: vehicle.id,
+                    dbKey: Object.keys(data).find(key => data[key].id === vehicle.id), // needed for update
                     vehicle: vehicle.name,
                     service: vehicle.maintence?.serviceHistory?.[vehicle.maintence?.serviceHistory.length - 1]?.details || 'N/A',
-                    mileage: vehicle.milage?.toString() || 'N/A',
+                    mileage: vehicle.mileage?.toString() || 'N/A',
+                    serviceHistory: vehicle.maintence?.serviceHistory || [],
                 }));
                 setRecords(loaded);
             } else {
@@ -52,19 +54,46 @@ export default function MaintenanceScreen() {
         )
         .sort((a, b) => a[sortKey]?.localeCompare(b[sortKey]));
 
-    // Add or edit record (local only, not saved to Firebase)
-    const handleSave = () => {
-        if (!form.vehicle || !form.service || !form.mileage) {
+    // Add or edit maintenance record in Firebase
+    const handleSave = async () => {
+        if (!form.vehicle || !form.service || !form.mileage || !form.date) {
             Alert.alert('All fields are required.');
             return;
         }
-        if (selectedRecord) {
-            setRecords(records.map(r => (r.id === selectedRecord.id ? { ...form, id: r.id } : r)));
-            setSelectedRecord(null);
-        } else {
-            setRecords([...records, { ...form, id: Date.now().toString() }]);
+        const db = getDatabase();
+        // Find the vehicle by name (or use a dropdown/select for better UX)
+        const vehicle = records.find(r => r.vehicle === form.vehicle);
+        if (!vehicle) {
+            Alert.alert('Vehicle not found.');
+            return;
         }
-        setForm({ vehicle: '', service: '', mileage: '' });
+        const dbKey = vehicle.dbKey;
+        const serviceHistory = Array.isArray(vehicle.serviceHistory) ? [...vehicle.serviceHistory] : [];
+        if (selectedRecord && selectedRecord.service === form.service && selectedRecord.mileage === form.mileage) {
+            // Edit the last record (for simplicity, only allow editing the latest)
+            if (serviceHistory.length > 0) {
+                serviceHistory[serviceHistory.length - 1] = {
+                    date: form.date,
+                    details: form.service,
+                };
+            }
+        } else {
+            // Add new record
+            serviceHistory.push({
+                date: form.date,
+                details: form.service,
+            });
+        }
+        // Update serviceHistory and lastServiceDate in maintence
+        await update(ref(db, `fleetOne/${dbKey}/maintence`), {
+            serviceHistory,
+            lastServiceDate: form.date,
+        });
+        // Update mileage in the vehicle root (not inside maintence)
+        await update(ref(db, `fleetOne/${dbKey}`), {
+            mileage: Number(form.mileage),
+        });
+        setForm({ vehicle: '', service: '', mileage: '', date: '' });
         setModalVisible(false);
         setDetailModalVisible(false);
     };
@@ -87,13 +116,18 @@ export default function MaintenanceScreen() {
     // Open detail modal
     const openDetail = record => {
         setSelectedRecord(record);
-        setForm(record);
+        setForm({ 
+            vehicle: record.vehicle, 
+            service: record.service, 
+            mileage: record.mileage, 
+            date: record.serviceHistory?.length ? record.serviceHistory[record.serviceHistory.length - 1].date : '' 
+        });
         setDetailModalVisible(true);
     };
 
     // Open add modal
     const openAdd = () => {
-        setForm({ vehicle: '', service: '', mileage: '' });
+        setForm({ vehicle: '', service: '', mileage: '', date: '' });
         setSelectedRecord(null);
         setModalVisible(true);
     };
@@ -166,6 +200,12 @@ export default function MaintenanceScreen() {
                             keyboardType="numeric"
                             onChangeText={text => setForm({ ...form, mileage: text })}
                         />
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Date (YYYY-MM-DD)"
+                            value={form.date}
+                            onChangeText={text => setForm({ ...form, date: text })}
+                        />
                         <View style={styles.modalButtonRow}>
                             <Button title="Cancel" onPress={() => setModalVisible(false)} />
                             <Button title="Save" onPress={handleSave} />
@@ -182,6 +222,18 @@ export default function MaintenanceScreen() {
                         <Text>Vehicle: {form.vehicle}</Text>
                         <Text>Service: {form.service}</Text>
                         <Text>Mileage: {form.mileage}</Text>
+                        <Text style={{ marginTop: 10, fontWeight: 'bold' }}>Service History:</Text>
+                        <FlatList
+                            data={selectedRecord?.serviceHistory || []}
+                            keyExtractor={(_, idx) => idx.toString()}
+                            renderItem={({ item }) => (
+                                <View style={{ marginBottom: 6 }}>
+                                    <Text>Date: {item.date}</Text>
+                                    <Text>Service: {item.details}</Text>
+                                </View>
+                            )}
+                            ListEmptyComponent={<Text>No previous maintenance records.</Text>}
+                        />
                         <View style={styles.modalButtonRow}>
                             <Button
                                 title="Edit"
