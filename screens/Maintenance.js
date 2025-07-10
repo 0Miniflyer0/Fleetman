@@ -20,6 +20,8 @@ export default function MaintenanceScreen() {
     const [detailModalVisible, setDetailModalVisible] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState(null);
     const [form, setForm] = useState({ vehicle: '', service: '', mileage: '', date: '' });
+    const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+    const [deleteTarget, setDeleteTarget] = useState({ record: null, index: null });
 
     // Fetch vehicles from Firebase
     useEffect(() => {
@@ -29,14 +31,20 @@ export default function MaintenanceScreen() {
             const data = snapshot.val();
             if (data) {
                 // Flatten vehicles into records for display
-                const loaded = Object.values(data).map(vehicle => ({
-                    id: vehicle.id,
-                    dbKey: Object.keys(data).find(key => data[key].id === vehicle.id), // needed for update
-                    vehicle: vehicle.name,
-                    service: vehicle.maintence?.serviceHistory?.[vehicle.maintence?.serviceHistory.length - 1]?.details || 'N/A',
-                    mileage: vehicle.mileage?.toString() || 'N/A',
-                    serviceHistory: vehicle.maintence?.serviceHistory || [],
-                }));
+                const loaded = Object.values(data).map(vehicle => {
+                    // Sort serviceHistory by date descending (most recent first)
+                    const history = Array.isArray(vehicle.maintence?.serviceHistory)
+                        ? [...vehicle.maintence.serviceHistory].sort((a, b) => b.date.localeCompare(a.date))
+                        : [];
+                    return {
+                        id: vehicle.id,
+                        dbKey: Object.keys(data).find(key => data[key].id === vehicle.id),
+                        vehicle: vehicle.name,
+                        service: history[0]?.details || 'N/A',
+                        mileage: vehicle.mileage?.toString() || 'N/A',
+                        serviceHistory: history,
+                    };
+                });
                 setRecords(loaded);
             } else {
                 setRecords([]);
@@ -61,22 +69,20 @@ export default function MaintenanceScreen() {
             return;
         }
         const db = getDatabase();
-        // Find the vehicle by name (or use a dropdown/select for better UX)
         const vehicle = records.find(r => r.vehicle === form.vehicle);
         if (!vehicle) {
             Alert.alert('Vehicle not found.');
             return;
         }
         const dbKey = vehicle.dbKey;
-        const serviceHistory = Array.isArray(vehicle.serviceHistory) ? [...vehicle.serviceHistory] : [];
-        if (selectedRecord && selectedRecord.service === form.service && selectedRecord.mileage === form.mileage) {
-            // Edit the last record (for simplicity, only allow editing the latest)
-            if (serviceHistory.length > 0) {
-                serviceHistory[serviceHistory.length - 1] = {
-                    date: form.date,
-                    details: form.service,
-                };
-            }
+        let serviceHistory = Array.isArray(vehicle.serviceHistory) ? [...vehicle.serviceHistory] : [];
+
+        if (selectedRecord && selectedRecord.editIndex !== undefined) {
+            // Edit the selected record by index
+            serviceHistory[selectedRecord.editIndex] = {
+                date: form.date,
+                details: form.service,
+            };
         } else {
             // Add new record
             serviceHistory.push({
@@ -84,10 +90,14 @@ export default function MaintenanceScreen() {
                 details: form.service,
             });
         }
+
+        // Sort serviceHistory by date descending after edit/add
+        serviceHistory = serviceHistory.sort((a, b) => b.date.localeCompare(a.date));
+
         // Update serviceHistory and lastServiceDate in maintence
         await update(ref(db, `fleetOne/${dbKey}/maintence`), {
             serviceHistory,
-            lastServiceDate: form.date,
+            lastServiceDate: serviceHistory[0]?.date || form.date,
         });
         // Update mileage in the vehicle root (not inside maintence)
         await update(ref(db, `fleetOne/${dbKey}`), {
@@ -116,11 +126,11 @@ export default function MaintenanceScreen() {
     // Open detail modal
     const openDetail = record => {
         setSelectedRecord(record);
-        setForm({ 
-            vehicle: record.vehicle, 
-            service: record.service, 
-            mileage: record.mileage, 
-            date: record.serviceHistory?.length ? record.serviceHistory[record.serviceHistory.length - 1].date : '' 
+        setForm({
+            vehicle: record.vehicle,
+            service: record.service,
+            mileage: record.mileage,
+            date: record.serviceHistory?.[0]?.date || '',
         });
         setDetailModalVisible(true);
     };
@@ -130,6 +140,64 @@ export default function MaintenanceScreen() {
         setForm({ vehicle: '', service: '', mileage: '', date: '' });
         setSelectedRecord(null);
         setModalVisible(true);
+    };
+
+    // Open edit modal for a specific maintenance record
+    const openEditMaintenance = (record, item, index) => {
+        setSelectedRecord({ ...record, editIndex: index });
+        setForm({
+            vehicle: record.vehicle,
+            service: item.details,
+            mileage: record.mileage,
+            date: item.date,
+        });
+        setModalVisible(true);
+        setDetailModalVisible(false);
+    };
+
+    const doDeleteMaintenance = async (record, index) => {
+        if (!record) return;
+        const db = getDatabase();
+        const dbKey = record.dbKey;
+        let updatedHistory = [...(record.serviceHistory || [])];
+        updatedHistory.splice(index, 1);
+
+        // Update Firebase
+        await update(ref(db, `fleetOne/${dbKey}/maintence`), {
+            serviceHistory: updatedHistory,
+            lastServiceDate: updatedHistory[0]?.date || '',
+        });
+
+        // Update local state and selectedRecord for modal
+        setRecords(prev =>
+            prev.map(r =>
+                r.id === record.id
+                    ? {
+                          ...r,
+                          serviceHistory: updatedHistory,
+                          service: updatedHistory[0]?.details || 'N/A',
+                      }
+                    : r
+            )
+        );
+
+        setSelectedRecord(prev =>
+            prev
+                ? {
+                      ...prev,
+                      serviceHistory: updatedHistory,
+                      service: updatedHistory[0]?.details || 'N/A',
+                  }
+                : prev
+        );
+
+        if (index === 0) {
+            setForm(form => ({
+                ...form,
+                service: updatedHistory[0]?.details || '',
+                date: updatedHistory[0]?.date || '',
+            }));
+        }
     };
 
     return (
@@ -226,32 +294,59 @@ export default function MaintenanceScreen() {
                         <FlatList
                             data={selectedRecord?.serviceHistory || []}
                             keyExtractor={(_, idx) => idx.toString()}
-                            renderItem={({ item }) => (
+                            renderItem={({ item, index }) => (
                                 <View style={{ marginBottom: 6 }}>
                                     <Text>Date: {item.date}</Text>
                                     <Text>Service: {item.details}</Text>
+                                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                                        <Button
+                                            title="Edit"
+                                            onPress={() => openEditMaintenance(selectedRecord, item, index)}
+                                        />
+                                        <Button
+                                            title="Delete"
+                                            color="red"
+                                            onPress={() => {
+                                                setDeleteTarget({ record: selectedRecord, index });
+                                                setDeleteConfirmVisible(true);
+                                            }}
+                                        />
+                                    </View>
                                 </View>
                             )}
                             ListEmptyComponent={<Text>No previous maintenance records.</Text>}
                         />
                         <View style={styles.modalButtonRow}>
-                            <Button
-                                title="Edit"
-                                onPress={() => {
-                                    setModalVisible(true);
-                                    setDetailModalVisible(false);
-                                }}
-                            />
-                            <Button
-                                title="Delete"
-                                color="red"
-                                onPress={() => handleDelete(selectedRecord.id)}
-                            />
                             <Button title="Close" onPress={() => setDetailModalVisible(false)} />
                         </View>
                     </View>
                 </View>
             </Modal>
+
+            {/* Delete Confirmation Modal */}
+            <Modal visible={deleteConfirmVisible} transparent animationType="fade">
+    <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { alignItems: 'center' }]}>
+            <Text style={{ fontWeight: 'bold', marginBottom: 16 }}>
+                Are you sure you want to delete this maintenance record?
+            </Text>
+            <View style={styles.modalButtonRow}>
+                <Button
+                    title="Cancel"
+                    onPress={() => setDeleteConfirmVisible(false)}
+                />
+                <Button
+                    title="Delete"
+                    color="red"
+                    onPress={async () => {
+                        await doDeleteMaintenance(deleteTarget.record, deleteTarget.index);
+                        setDeleteConfirmVisible(false);
+                    }}
+                />
+            </View>
+        </View>
+    </View>
+</Modal>
         </View>
     );
 }

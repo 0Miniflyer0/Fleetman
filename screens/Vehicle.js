@@ -10,7 +10,7 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { getDatabase, ref, onValue, push, set } from 'firebase/database';
+import { getDatabase, ref, onValue, push, set, get, child } from 'firebase/database';
 
 export default function VehicleScreen() {
   const [vehicles, setVehicles] = useState([]);
@@ -20,6 +20,8 @@ export default function VehicleScreen() {
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [form, setForm] = useState({ name: '', color: '', license: '', type: '', year: '', make: '', model: '', vin: '', mileage: '' });
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   // Fetch vehicles from Firebase
   useEffect(() => {
@@ -53,14 +55,38 @@ export default function VehicleScreen() {
 
   // Add or edit vehicle (now saves new vehicle to Firebase)
   const handleSave = async () => {
-    if (!form.name || !form.color || !form.license || !form.type || !form.year || !form.make || !form.model || !form.vin || !form.mileage) {
+    if (
+      !form.name ||
+      !form.color ||
+      !form.license ||
+      !form.type ||
+      !form.year ||
+      !form.make ||
+      !form.model ||
+      !form.vin ||
+      !form.mileage
+    ) {
       Alert.alert('All fields are required.');
       return;
     }
     const db = getDatabase();
     if (selectedVehicle) {
-      // Local edit only (optional: implement Firebase update here)
-      setVehicles(vehicles.map(v => (v.id === selectedVehicle.id ? { ...form, id: v.id } : v)));
+      // Update vehicle in Firebase
+      const updatedVehicle = {
+        id: selectedVehicle.id,
+        name: form.name,
+        type: form.type,
+        liciencePlate: form.license,
+        mileage: Number(form.mileage),
+        year: Number(form.year),
+        make: form.make,
+        model: form.model,
+        vin: form.vin,
+        color: form.color,
+      };
+      await set(ref(db, `fleetOne/${selectedVehicle.id}`), updatedVehicle);
+      // Update local state
+      setVehicles(vehicles.map(v => (v.id === selectedVehicle.id ? updatedVehicle : v)));
       setSelectedVehicle(null);
     } else {
       // Add new vehicle to Firebase
@@ -76,7 +102,6 @@ export default function VehicleScreen() {
         model: form.model,
         vin: form.vin,
         color: form.color,
-        // No maintence field yet
       };
       await set(newVehicleRef, newVehicle);
     }
@@ -101,9 +126,29 @@ export default function VehicleScreen() {
   };
 
   // Open detail modal
-  const openDetail = vehicle => {
-    setSelectedVehicle(vehicle);
-    setForm(vehicle);
+  const openDetail = async (vehicle) => {
+    const db = getDatabase();
+    const vehicleRef = ref(db, `fleetOne/${vehicle.id}`);
+    const snapshot = await get(vehicleRef);
+    if (snapshot.exists()) {
+      const fullVehicle = snapshot.val();
+      setSelectedVehicle(fullVehicle);
+      setForm({
+        name: fullVehicle.name || '',
+        color: fullVehicle.color || '',
+        license: fullVehicle.liciencePlate || '',
+        type: fullVehicle.type || '',
+        year: fullVehicle.year ? String(fullVehicle.year) : '',
+        make: fullVehicle.make || '',
+        model: fullVehicle.model || '',
+        vin: fullVehicle.vin || '',
+        mileage: fullVehicle.mileage ? String(fullVehicle.mileage) : '',
+      });
+    } else {
+      // fallback to summary if not found
+      setSelectedVehicle(vehicle);
+      setForm(vehicle);
+    }
     setDetailModalVisible(true);
   };
 
@@ -112,6 +157,16 @@ export default function VehicleScreen() {
     setForm({ name: '', color: '', license: '', type: '', year: '', make: '', model: '', vin: '', mileage: '' });
     setSelectedVehicle(null);
     setModalVisible(true);
+  };
+
+  const doDeleteVehicle = async (vehicle) => {
+    if (!vehicle) return;
+    const db = getDatabase();
+    // Remove from Firebase
+    await set(ref(db, `fleetOne/${vehicle.id}`), null);
+    // Remove from local state
+    setVehicles(prev => prev.filter(v => v.id !== vehicle.id));
+    setDetailModalVisible(false);
   };
 
   return (
@@ -246,9 +301,37 @@ export default function VehicleScreen() {
               <Button
                 title="Delete"
                 color="red"
-                onPress={() => handleDelete(selectedVehicle.id)}
+                onPress={() => {
+                    setDeleteTarget(selectedVehicle);
+                    setDeleteConfirmVisible(true);
+                }}
               />
               <Button title="Close" onPress={() => setDetailModalVisible(false)} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal visible={deleteConfirmVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { alignItems: 'center' }]}>
+            <Text style={{ fontWeight: 'bold', marginBottom: 16 }}>
+              Are you sure you want to delete this vehicle?
+            </Text>
+            <View style={styles.modalButtonRow}>
+              <Button
+                title="Cancel"
+                onPress={() => setDeleteConfirmVisible(false)}
+              />
+              <Button
+                title="Delete"
+                color="red"
+                onPress={async () => {
+                  await doDeleteVehicle(deleteTarget);
+                  setDeleteConfirmVisible(false);
+                }}
+              />
             </View>
           </View>
         </View>
