@@ -4,26 +4,29 @@ import {
   Text,
   TextInput,
   FlatList,
-  TouchableOpacity,
   Modal,
   StyleSheet,
   Alert,
   Pressable,
   Image,
+  ActivityIndicator,
+  Platform,
+  TouchableOpacity,
 } from 'react-native';
 import { getDatabase, ref, onValue, push, set, get } from 'firebase/database';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemeContext } from '../ThemeContext';
 import '../firebase'; // Ensure Firebase is initialized
 
 const COLORS = {
   primary: '#1A73E8',
-  accent: '#34A853',
+  moon: '#FBBC05',
+  accent: '#1A73E8',
   warning: '#FBBC05',
   danger: '#EA4335',
   background: '#F4F6FB',
   card: '#FFFFFF',
-  text: '#222B45',
+  text: '#256293',
   gray: '#888',
   darkBg: '#181a20',
   darkCard: '#23272f',
@@ -50,12 +53,21 @@ export default function VehicleScreen() {
   });
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState('');
 
   const { theme, toggleTheme } = useContext(ThemeContext);
   const isDark = theme === 'dark';
 
+  // Toast helper
+  const showToast = msg => {
+    setToast(msg);
+    setTimeout(() => setToast(''), 2000);
+  };
+
   // Fetch vehicles from Firebase
   useEffect(() => {
+    setLoading(true);
     const db = getDatabase();
     const vehiclesRef = ref(db, 'fleetOne');
     const unsubscribe = onValue(vehiclesRef, snapshot => {
@@ -71,6 +83,7 @@ export default function VehicleScreen() {
       } else {
         setVehicles([]);
       }
+      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -117,6 +130,7 @@ export default function VehicleScreen() {
       };
       await set(ref(db, `fleetOne/${selectedVehicle.id}`), updatedVehicle);
       setSelectedVehicle(null);
+      showToast('Vehicle updated!');
     } else {
       // Add new vehicle to Firebase
       const newVehicleRef = push(ref(db, 'fleetOne'));
@@ -133,6 +147,7 @@ export default function VehicleScreen() {
         color: form.color,
       };
       await set(newVehicleRef, newVehicle);
+      showToast('Vehicle added!');
     }
     setForm({
       name: '',
@@ -155,6 +170,7 @@ export default function VehicleScreen() {
     const db = getDatabase();
     await set(ref(db, `fleetOne/${vehicle.id}`), null);
     setDetailModalVisible(false);
+    showToast('Vehicle deleted!');
   };
 
   // Open detail modal
@@ -200,6 +216,11 @@ export default function VehicleScreen() {
     setModalVisible(true);
   };
 
+  // Input icon helper
+  const inputIcon = (icon, color = COLORS.gray) => (
+    <MaterialIcons name={icon} size={22} color={color} style={{ marginRight: 8 }} />
+  );
+
   return (
     <View style={[styles.container, isDark && { backgroundColor: COLORS.darkBg }]}>
       {/* Logo Bar */}
@@ -209,8 +230,8 @@ export default function VehicleScreen() {
           style={styles.logo}
           resizeMode="contain"
         />
-        <TouchableOpacity style={styles.themeToggle} onPress={toggleTheme}>
-          <MaterialIcons name={isDark ? 'dark-mode' : 'light-mode'} size={32} color={isDark ? COLORS.accent : COLORS.primary} />
+        <TouchableOpacity style={styles.themeToggle} onPress={toggleTheme} activeOpacity={0.7}>
+          <MaterialIcons name={isDark ? 'dark-mode' : 'light-mode'} size={32} color={isDark ? COLORS.moon : COLORS.primary} />
         </TouchableOpacity>
       </View>
 
@@ -234,45 +255,78 @@ export default function VehicleScreen() {
       {/* Sort Dropdown */}
       <View style={styles.sortRow}>
         <Text style={styles.sortLabel}>Sort by:</Text>
-        <Pressable onPress={() => setSortKey('name')}>
-          <Text style={[styles.sortOption, sortKey === 'name' && styles.sortActive]}>Name</Text>
-        </Pressable>
-        <Pressable onPress={() => setSortKey('color')}>
-          <Text style={[styles.sortOption, sortKey === 'color' && styles.sortActive]}>Color</Text>
-        </Pressable>
-        <Pressable onPress={() => setSortKey('license')}>
-          <Text style={[styles.sortOption, sortKey === 'license' && styles.sortActive]}>License</Text>
-        </Pressable>
+        {['name', 'color', 'license'].map(key => (
+          <Pressable
+            key={key}
+            android_ripple={{ color: COLORS.accent, borderless: true }}
+            onPress={() => setSortKey(key)}
+            style={({ pressed }) => [
+              styles.sortOption,
+              sortKey === key && styles.sortActive,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Text style={[styles.sortOption, sortKey === key && styles.sortActive]}>
+              {key.charAt(0).toUpperCase() + key.slice(1)}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
       {/* Vehicle Cards */}
-      <FlatList
-        data={filteredVehicles}
-        keyExtractor={item => item.id}
-        contentContainerStyle={{ paddingBottom: 80 }}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={[styles.card, isDark && { backgroundColor: COLORS.darkCard }]} onPress={() => openDetail(item)}>
-            <View style={styles.cardRow}>
-              <View
-                style={[
-                  styles.colorDot,
-                  { backgroundColor: item.color !== 'N/A' ? item.color : COLORS.gray },
-                ]}
-              />
-              <Text style={[styles.cardTitle, isDark && { color: COLORS.darkText }]}>{item.name}</Text>
+      {loading ? (
+        <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 32 }} />
+      ) : (
+        <FlatList
+          data={filteredVehicles}
+          keyExtractor={item => item.id}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          renderItem={({ item }) => (
+            <Pressable
+              style={({ pressed }) => [
+                styles.card,
+                isDark && { backgroundColor: COLORS.darkCard },
+                pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+              ]}
+              android_ripple={{ color: COLORS.accent, borderless: false }}
+              onPress={() => openDetail(item)}
+            >
+              <View style={styles.cardRow}>
+                <View
+                  style={[
+                    styles.colorDot,
+                    { backgroundColor: item.color !== 'N/A' ? item.color : COLORS.gray },
+                  ]}
+                />
+                <Text style={[styles.cardTitle, isDark && { color: COLORS.darkText }]}>{item.name}</Text>
+              </View>
+              <Text style={[styles.cardSub, isDark && { color: COLORS.darkText }]}>
+                License: <Text style={styles.license}>{item.license}</Text>
+              </Text>
+            </Pressable>
+          )}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', marginTop: 32 }}>
+              <MaterialCommunityIcons name="car-off" size={48} color={COLORS.gray} style={{ marginBottom: 8 }} />
+              <Text style={[styles.emptyText, isDark && { color: COLORS.darkText }]}>No vehicles found.</Text>
             </View>
-            <Text style={[styles.cardSub, isDark && { color: COLORS.darkText }]}>
-              License: <Text style={styles.license}>{item.license}</Text>
-            </Text>
-          </TouchableOpacity>
-        )}
-        ListEmptyComponent={<Text style={[styles.emptyText, isDark && { color: COLORS.darkText }]}>No vehicles found.</Text>}
-      />
+          }
+        />
+      )}
 
       {/* Floating Action Button */}
-      <TouchableOpacity style={[styles.fab, isDark && { backgroundColor: COLORS.primary }]} onPress={openAdd} accessibilityLabel="Add Vehicle">
-        <MaterialIcons name="add" size={32} color="#fff" />
-      </TouchableOpacity>
+      <Pressable
+        style={({ pressed }) => [
+          styles.fab,
+          isDark && { backgroundColor: COLORS.accent },
+          pressed && { transform: [{ scale: 0.93 }] },
+        ]}
+        android_ripple={{ color: '#fff', borderless: true }}
+        onPress={openAdd}
+        accessibilityLabel="Add Vehicle"
+      >
+        <MaterialIcons name="add" size={36} color="#fff" />
+      </Pressable>
 
       {/* Add/Edit Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent>
@@ -281,71 +335,98 @@ export default function VehicleScreen() {
             <Text style={[styles.modalTitle, isDark && { color: COLORS.primary }]}>
               {selectedVehicle ? 'Edit Vehicle' : 'Add Vehicle'}
             </Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Name"
-              value={form.name}
-              onChangeText={text => setForm({ ...form, name: text })}
-              placeholderTextColor={COLORS.gray}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Type (e.g. Truck, Van, SUV)"
-              value={form.type}
-              onChangeText={text => setForm({ ...form, type: text })}
-              placeholderTextColor={COLORS.gray}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Color"
-              value={form.color}
-              onChangeText={text => setForm({ ...form, color: text })}
-              placeholderTextColor={COLORS.gray}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="License Plate"
-              value={form.license}
-              onChangeText={text => setForm({ ...form, license: text })}
-              placeholderTextColor={COLORS.gray}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Year"
-              value={form.year}
-              keyboardType="numeric"
-              onChangeText={text => setForm({ ...form, year: text })}
-              placeholderTextColor={COLORS.gray}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Make"
-              value={form.make}
-              onChangeText={text => setForm({ ...form, make: text })}
-              placeholderTextColor={COLORS.gray}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Model"
-              value={form.model}
-              onChangeText={text => setForm({ ...form, model: text })}
-              placeholderTextColor={COLORS.gray}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="VIN"
-              value={form.vin}
-              onChangeText={text => setForm({ ...form, vin: text })}
-              placeholderTextColor={COLORS.gray}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Mileage"
-              value={form.mileage}
-              keyboardType="numeric"
-              onChangeText={text => setForm({ ...form, mileage: text })}
-              placeholderTextColor={COLORS.gray}
-            />
+            <View style={styles.inputRow}>
+              {inputIcon('drive-eta')}
+              <TextInput
+                style={styles.input}
+                placeholder="Name"
+                value={form.name}
+                onChangeText={text => setForm({ ...form, name: text })}
+                placeholderTextColor={COLORS.gray}
+              />
+            </View>
+            <View style={styles.inputRow}>
+              {inputIcon('category')}
+              <TextInput
+                style={styles.input}
+                placeholder="Type (e.g. Truck, Van, SUV)"
+                value={form.type}
+                onChangeText={text => setForm({ ...form, type: text })}
+                placeholderTextColor={COLORS.gray}
+              />
+            </View>
+            <View style={styles.inputRow}>
+              {inputIcon('palette')}
+              <TextInput
+                style={styles.input}
+                placeholder="Color"
+                value={form.color}
+                onChangeText={text => setForm({ ...form, color: text })}
+                placeholderTextColor={COLORS.gray}
+              />
+            </View>
+            <View style={styles.inputRow}>
+              {inputIcon('confirmation-number')}
+              <TextInput
+                style={styles.input}
+                placeholder="License Plate"
+                value={form.license}
+                onChangeText={text => setForm({ ...form, license: text })}
+                placeholderTextColor={COLORS.gray}
+              />
+            </View>
+            <View style={styles.inputRow}>
+              {inputIcon('calendar-today')}
+              <TextInput
+                style={styles.input}
+                placeholder="Year"
+                value={form.year}
+                keyboardType="numeric"
+                onChangeText={text => setForm({ ...form, year: text })}
+                placeholderTextColor={COLORS.gray}
+              />
+            </View>
+            <View style={styles.inputRow}>
+              {inputIcon('business')}
+              <TextInput
+                style={styles.input}
+                placeholder="Make"
+                value={form.make}
+                onChangeText={text => setForm({ ...form, make: text })}
+                placeholderTextColor={COLORS.gray}
+              />
+            </View>
+            <View style={styles.inputRow}>
+              {inputIcon('directions-car')}
+              <TextInput
+                style={styles.input}
+                placeholder="Model"
+                value={form.model}
+                onChangeText={text => setForm({ ...form, model: text })}
+                placeholderTextColor={COLORS.gray}
+              />
+            </View>
+            <View style={styles.inputRow}>
+              {inputIcon('vpn-key')}
+              <TextInput
+                style={styles.input}
+                placeholder="VIN"
+                value={form.vin}
+                onChangeText={text => setForm({ ...form, vin: text })}
+                placeholderTextColor={COLORS.gray}
+              />
+            </View>
+            <View style={styles.inputRow}>
+              {inputIcon('speed')}
+              <TextInput
+                style={styles.input}
+                placeholder="Mileage"
+                value={form.mileage}
+                keyboardType="numeric"
+                onChangeText={text => setForm({ ...form, mileage: text })}
+                placeholderTextColor={COLORS.gray}
+              />
+            </View>
             <View style={styles.modalButtonRow}>
               <Pressable style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -423,6 +504,13 @@ export default function VehicleScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Toast */}
+      {toast ? (
+        <View style={styles.toast}>
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -440,8 +528,8 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   logo: {
-    width: 180,      // Increased size
-    height: 72,      // Increased size
+    width: 180,
+    height: 72,
     marginBottom: 0,
   },
   themeToggle: {
@@ -518,17 +606,18 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 24,
-    bottom: 32,
+    bottom: 40,
     backgroundColor: COLORS.primary,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 6,
+    elevation: 10,
     shadowColor: COLORS.primary,
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
   },
   emptyText: { textAlign: 'center', color: COLORS.gray, marginTop: 40, fontSize: 16 },
   modalOverlay: {
@@ -545,12 +634,17 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12, color: COLORS.primary },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
   input: {
+    flex: 1,
     borderWidth: 1,
     borderColor: '#ccc',
     borderRadius: 8,
     padding: 8,
-    marginBottom: 10,
     fontSize: 16,
     backgroundColor: '#f7f7f7',
     color: COLORS.text,
@@ -582,4 +676,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   deleteBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  toast: {
+    position: 'absolute',
+    bottom: 32,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  toastText: {
+    backgroundColor: COLORS.accent,
+    color: '#fff',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 24,
+    fontWeight: 'bold',
+    fontSize: 16,
+    elevation: 4,
+    shadowColor: COLORS.accent,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+  },
 });

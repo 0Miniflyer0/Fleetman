@@ -4,25 +4,28 @@ import {
     Text,
     TextInput,
     FlatList,
-    TouchableOpacity,
     Modal,
     StyleSheet,
     Alert,
     Pressable,
     Image,
+    ActivityIndicator,
+    Platform,
+    TouchableOpacity,
 } from 'react-native';
 import { getDatabase, ref, onValue, update } from 'firebase/database';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemeContext } from '../ThemeContext';
 import '../firebase'; // Ensure Firebase is initialized
 
 const COLORS = {
     primary: '#1A73E8',
-    accent: '#FBBC05',
+    moon: '#FBBC05',
+    accent: '#FF9100',
     danger: '#EA4335',
     background: '#F4F6FB',
     card: '#FFFFFF',
-    text: '#222B45',
+    text: '#256293',
     gray: '#888',
     darkBg: '#181a20',
     darkCard: '#23272f',
@@ -39,12 +42,21 @@ export default function MaintenanceScreen() {
     const [form, setForm] = useState({ vehicle: '', service: '', mileage: '', date: '' });
     const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState({ record: null, index: null });
+    const [loading, setLoading] = useState(true);
+    const [toast, setToast] = useState('');
 
     const { theme, toggleTheme } = useContext(ThemeContext);
     const isDark = theme === 'dark';
 
+    // Toast helper
+    const showToast = msg => {
+        setToast(msg);
+        setTimeout(() => setToast(''), 2000);
+    };
+
     // Fetch vehicles from Firebase
     useEffect(() => {
+        setLoading(true);
         const db = getDatabase();
         const vehiclesRef = ref(db, 'fleetOne');
         const unsubscribe = onValue(vehiclesRef, snapshot => {
@@ -67,6 +79,7 @@ export default function MaintenanceScreen() {
             } else {
                 setRecords([]);
             }
+            setLoading(false);
         });
         return () => unsubscribe();
     }, []);
@@ -119,6 +132,7 @@ export default function MaintenanceScreen() {
         setForm({ vehicle: '', service: '', mileage: '', date: '' });
         setModalVisible(false);
         setDetailModalVisible(false);
+        showToast(selectedRecord ? 'Record updated!' : 'Record added!');
     };
 
     // Delete maintenance record from Firebase
@@ -163,6 +177,7 @@ export default function MaintenanceScreen() {
                 date: updatedHistory[0]?.date || '',
             }));
         }
+        showToast('Record deleted!');
     };
 
     // Open detail modal
@@ -197,6 +212,33 @@ export default function MaintenanceScreen() {
         setDetailModalVisible(false);
     };
 
+    // Input icon helper
+    const inputIcon = (icon, color = COLORS.gray) => (
+        <MaterialIcons name={icon} size={22} color={color} style={{ marginRight: 8 }} />
+    );
+
+    // Date picker (simple, for demo)
+    const DateInput = ({ value, onChange }) => (
+        <Pressable
+            style={styles.inputRow}
+            onPress={() => {
+                // For demo: prompt for date, in real app use a date picker library
+                const date = prompt('Enter date (YYYY-MM-DD):', value);
+                if (date) onChange(date);
+            }}
+        >
+            {inputIcon('event')}
+            <TextInput
+                style={styles.input}
+                placeholder="Date (YYYY-MM-DD)"
+                value={value}
+                onChangeText={onChange}
+                placeholderTextColor={COLORS.gray}
+                editable={Platform.OS !== 'web'}
+            />
+        </Pressable>
+    );
+
     return (
         <View style={[styles.container, isDark && { backgroundColor: COLORS.darkBg }]}>
             {/* Logo Bar */}
@@ -206,8 +248,8 @@ export default function MaintenanceScreen() {
                     style={styles.logo}
                     resizeMode="contain"
                 />
-                <TouchableOpacity style={styles.themeToggle} onPress={toggleTheme}>
-                    <MaterialIcons name={isDark ? 'dark-mode' : 'light-mode'} size={32} color={isDark ? COLORS.accent : COLORS.primary} />
+                <TouchableOpacity style={styles.themeToggle} onPress={toggleTheme} activeOpacity={0.7}>
+                    <MaterialIcons name={isDark ? 'dark-mode' : 'light-mode'} size={32} color={isDark ? COLORS.moon : COLORS.primary} />
                 </TouchableOpacity>
             </View>
 
@@ -231,43 +273,76 @@ export default function MaintenanceScreen() {
             {/* Sort Dropdown */}
             <View style={styles.sortRow}>
                 <Text style={styles.sortLabel}>Sort by:</Text>
-                <Pressable onPress={() => setSortKey('vehicle')}>
-                    <Text style={[styles.sortOption, sortKey === 'vehicle' && styles.sortActive]}>Vehicle</Text>
-                </Pressable>
-                <Pressable onPress={() => setSortKey('service')}>
-                    <Text style={[styles.sortOption, sortKey === 'service' && styles.sortActive]}>Service</Text>
-                </Pressable>
-                <Pressable onPress={() => setSortKey('mileage')}>
-                    <Text style={[styles.sortOption, sortKey === 'mileage' && styles.sortActive]}>Mileage</Text>
-                </Pressable>
+                {['vehicle', 'service', 'mileage'].map(key => (
+                    <Pressable
+                        key={key}
+                        android_ripple={{ color: COLORS.accent, borderless: true }}
+                        onPress={() => setSortKey(key)}
+                        style={({ pressed }) => [
+                            styles.sortOption,
+                            sortKey === key && styles.sortActive,
+                            pressed && { opacity: 0.7 },
+                        ]}
+                    >
+                        <Text style={[styles.sortOption, sortKey === key && styles.sortActive]}>
+                            {key.charAt(0).toUpperCase() + key.slice(1)}
+                        </Text>
+                    </Pressable>
+                ))}
             </View>
 
             {/* Maintenance Cards */}
-            <FlatList
-                data={filteredRecords}
-                keyExtractor={item => item.id}
-                contentContainerStyle={{ paddingBottom: 80 }}
-                renderItem={({ item }) => (
-                    <TouchableOpacity style={[styles.card, isDark && { backgroundColor: COLORS.darkCard }]} onPress={() => openDetail(item)}>
-                        <View style={styles.cardRow}>
-                            <MaterialIcons name="directions-car" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
-                            <Text style={[styles.cardTitle, isDark && { color: COLORS.darkText }]}>{item.vehicle}</Text>
+            {loading ? (
+                <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 32 }} />
+            ) : (
+                <FlatList
+                    data={filteredRecords}
+                    keyExtractor={item => item.id}
+                    contentContainerStyle={{ paddingBottom: 100 }}
+                    renderItem={({ item }) => (
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.card,
+                                isDark && { backgroundColor: COLORS.darkCard },
+                                pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+                            ]}
+                            android_ripple={{ color: COLORS.accent, borderless: false }}
+                            onPress={() => openDetail(item)}
+                        >
+                            <View style={styles.cardRow}>
+                                <MaterialIcons name="directions-car" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
+                                <Text style={[styles.cardTitle, isDark && { color: COLORS.darkText }]}>{item.vehicle}</Text>
+                            </View>
+                            <Text style={[styles.cardSub, isDark && { color: COLORS.darkText }]}>
+                                Service: <Text style={{ color: COLORS.accent }}>{item.service}</Text>
+                            </Text>
+                            <Text style={[styles.cardSub, isDark && { color: COLORS.darkText }]}>
+                                Mileage: <Text style={{ color: COLORS.primary }}>{item.mileage}</Text>
+                            </Text>
+                        </Pressable>
+                    )}
+                    ListEmptyComponent={
+                        <View style={{ alignItems: 'center', marginTop: 32 }}>
+                            <MaterialCommunityIcons name="tools" size={48} color={COLORS.gray} style={{ marginBottom: 8 }} />
+                            <Text style={[styles.emptyText, isDark && { color: COLORS.darkText }]}>No maintenance records found.</Text>
                         </View>
-                        <Text style={[styles.cardSub, isDark && { color: COLORS.darkText }]}>
-                            Service: <Text style={{ color: COLORS.accent }}>{item.service}</Text>
-                        </Text>
-                        <Text style={[styles.cardSub, isDark && { color: COLORS.darkText }]}>
-                            Mileage: <Text style={{ color: COLORS.primary }}>{item.mileage}</Text>
-                        </Text>
-                    </TouchableOpacity>
-                )}
-                ListEmptyComponent={<Text style={[styles.emptyText, isDark && { color: COLORS.darkText }]}>No maintenance records found.</Text>}
-            />
+                    }
+                />
+            )}
 
             {/* Floating Action Button */}
-            <TouchableOpacity style={[styles.fab, isDark && { backgroundColor: COLORS.accent }]} onPress={openAdd} accessibilityLabel="Add Maintenance Record">
-                <MaterialIcons name="add" size={32} color="#fff" />
-            </TouchableOpacity>
+            <Pressable
+                style={({ pressed }) => [
+                    styles.fab,
+                    isDark && { backgroundColor: COLORS.accent },
+                    pressed && { transform: [{ scale: 0.93 }] },
+                ]}
+                android_ripple={{ color: '#fff', borderless: true }}
+                onPress={openAdd}
+                accessibilityLabel="Add Maintenance Record"
+            >
+                <MaterialIcons name="add" size={36} color="#fff" />
+            </Pressable>
 
             {/* Add/Edit Modal */}
             <Modal visible={modalVisible} animationType="slide" transparent>
@@ -276,35 +351,38 @@ export default function MaintenanceScreen() {
                         <Text style={[styles.modalTitle, isDark && { color: COLORS.accent }]}>
                             {selectedRecord ? 'Edit Record' : 'Add Maintenance Record'}
                         </Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Vehicle"
-                            value={form.vehicle}
-                            onChangeText={text => setForm({ ...form, vehicle: text })}
-                            placeholderTextColor={COLORS.gray}
-                        />
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Service Type"
-                            value={form.service}
-                            onChangeText={text => setForm({ ...form, service: text })}
-                            placeholderTextColor={COLORS.gray}
-                        />
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Mileage"
-                            value={form.mileage}
-                            keyboardType="numeric"
-                            onChangeText={text => setForm({ ...form, mileage: text })}
-                            placeholderTextColor={COLORS.gray}
-                        />
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Date (YYYY-MM-DD)"
-                            value={form.date}
-                            onChangeText={text => setForm({ ...form, date: text })}
-                            placeholderTextColor={COLORS.gray}
-                        />
+                        <View style={styles.inputRow}>
+                            {inputIcon('directions-car')}
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Vehicle"
+                                value={form.vehicle}
+                                onChangeText={text => setForm({ ...form, vehicle: text })}
+                                placeholderTextColor={COLORS.gray}
+                            />
+                        </View>
+                        <View style={styles.inputRow}>
+                            {inputIcon('build')}
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Service Type"
+                                value={form.service}
+                                onChangeText={text => setForm({ ...form, service: text })}
+                                placeholderTextColor={COLORS.gray}
+                            />
+                        </View>
+                        <View style={styles.inputRow}>
+                            {inputIcon('speed')}
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Mileage"
+                                value={form.mileage}
+                                keyboardType="numeric"
+                                onChangeText={text => setForm({ ...form, mileage: text })}
+                                placeholderTextColor={COLORS.gray}
+                            />
+                        </View>
+                        <DateInput value={form.date} onChange={date => setForm({ ...form, date })} />
                         <View style={styles.modalButtonRow}>
                             <Pressable style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
                                 <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -352,7 +430,12 @@ export default function MaintenanceScreen() {
                                     </View>
                                 </View>
                             )}
-                            ListEmptyComponent={<Text style={isDark && { color: COLORS.darkText }}>No previous maintenance records.</Text>}
+                            ListEmptyComponent={
+                                <View style={{ alignItems: 'center', marginTop: 8 }}>
+                                    <MaterialCommunityIcons name="history" size={32} color={COLORS.gray} style={{ marginBottom: 4 }} />
+                                    <Text style={isDark && { color: COLORS.darkText }}>No previous maintenance records.</Text>
+                                </View>
+                            }
                         />
                         <View style={styles.modalButtonRow}>
                             <Pressable style={styles.cancelBtn} onPress={() => setDetailModalVisible(false)}>
@@ -387,6 +470,13 @@ export default function MaintenanceScreen() {
                     </View>
                 </View>
             </Modal>
+
+            {/* Toast */}
+            {toast ? (
+                <View style={styles.toast}>
+                    <Text style={styles.toastText}>{toast}</Text>
+                </View>
+            ) : null}
         </View>
     );
 }
@@ -404,8 +494,8 @@ const styles = StyleSheet.create({
         position: 'relative',
     },
     logo: {
-        width: 180,      // Increased size
-        height: 72,      // Increased size
+        width: 180,
+        height: 72,
         marginBottom: 0,
     },
     themeToggle: {
@@ -470,17 +560,18 @@ const styles = StyleSheet.create({
     fab: {
         position: 'absolute',
         right: 24,
-        bottom: 32,
+        bottom: 40,
         backgroundColor: COLORS.accent,
-        width: 60,
-        height: 60,
-        borderRadius: 30,
+        width: 72,
+        height: 72,
+        borderRadius: 36,
         alignItems: 'center',
         justifyContent: 'center',
-        elevation: 6,
+        elevation: 10,
         shadowColor: COLORS.accent,
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
+        shadowOpacity: 0.3,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 4 },
     },
     emptyText: { textAlign: 'center', color: COLORS.gray, marginTop: 40, fontSize: 16 },
     modalOverlay: {
@@ -497,12 +588,17 @@ const styles = StyleSheet.create({
         elevation: 5,
     },
     modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12, color: COLORS.accent },
+    inputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
     input: {
+        flex: 1,
         borderWidth: 1,
         borderColor: '#ccc',
         borderRadius: 8,
         padding: 8,
-        marginBottom: 10,
         fontSize: 16,
         backgroundColor: '#f7f7f7',
         color: COLORS.text,
@@ -534,4 +630,25 @@ const styles = StyleSheet.create({
         paddingHorizontal: 18,
     },
     deleteBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+    toast: {
+        position: 'absolute',
+        bottom: 32,
+        left: 0,
+        right: 0,
+        alignItems: 'center',
+        zIndex: 999,
+    },
+    toastText: {
+        backgroundColor: COLORS.accent,
+        color: '#fff',
+        paddingHorizontal: 24,
+        paddingVertical: 10,
+        borderRadius: 24,
+        fontWeight: 'bold',
+        fontSize: 16,
+        elevation: 4,
+        shadowColor: COLORS.accent,
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+    },
 });

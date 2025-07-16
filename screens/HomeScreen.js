@@ -1,5 +1,17 @@
-import React, { useContext } from 'react';
-import { StyleSheet, Text, View, TextInput, FlatList, Dimensions, ScrollView, Image, TouchableOpacity } from 'react-native';
+import React, { useContext, useState } from 'react';
+import {
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  FlatList,
+  Dimensions,
+  ScrollView,
+  Image,
+  TouchableOpacity,
+  ActivityIndicator,
+  Platform,
+} from 'react-native';
 import { LineChart, PieChart } from 'react-native-chart-kit';
 import { getDatabase, ref, onValue } from 'firebase/database';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -12,7 +24,8 @@ const CHART_CARD_WIDTH = Math.min(screenWidth - CHART_CARD_MARGIN * 2, 400);
 
 const COLORS = {
   primary: '#1A73E8',
-  accent: '#FBBC05',
+  moon: '#FBBC05',
+  accent: '#FF9100',
   danger: '#EA4335',
   background: '#F4F6FB',
   card: '#FFFFFF',
@@ -24,12 +37,15 @@ const COLORS = {
 };
 
 export default function HomeScreen() {
-  const [reminders, setReminders] = React.useState([]);
-  const [search, setSearch] = React.useState('');
+  const [reminders, setReminders] = useState([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState('');
   const { theme, toggleTheme } = useContext(ThemeContext);
   const isDark = theme === 'dark';
 
   React.useEffect(() => {
+    setLoading(true);
     const db = getDatabase();
     const vehiclesRef = ref(db, 'fleetOne');
     const unsubscribe = onValue(vehiclesRef, snapshot => {
@@ -47,6 +63,7 @@ export default function HomeScreen() {
       } else {
         setReminders([]);
       }
+      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -103,6 +120,12 @@ export default function HomeScreen() {
     legend: ['Services This Week'],
   };
 
+  // Toast helper
+  const showToast = msg => {
+    setToast(msg);
+    setTimeout(() => setToast(''), 2000);
+  };
+
   return (
     <ScrollView style={[styles.container, isDark && { backgroundColor: COLORS.darkBg }]} contentContainerStyle={{ paddingBottom: 32 }}>
       {/* Logo Bar */}
@@ -112,8 +135,8 @@ export default function HomeScreen() {
           style={styles.logo}
           resizeMode="contain"
         />
-        <TouchableOpacity style={styles.themeToggle} onPress={toggleTheme}>
-          <MaterialIcons name={isDark ? 'dark-mode' : 'light-mode'} size={32} color={isDark ? COLORS.accent : COLORS.primary} />
+        <TouchableOpacity style={styles.themeToggle} onPress={toggleTheme} activeOpacity={0.7}>
+          <MaterialIcons name={isDark ? 'dark-mode' : 'light-mode'} size={32} color={isDark ? COLORS.moon : COLORS.primary} />
         </TouchableOpacity>
       </View>
 
@@ -137,28 +160,35 @@ export default function HomeScreen() {
       {/* Reminders Section */}
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, isDark && { color: COLORS.accent }]}>Reminders</Text>
-        <FlatList
-          data={filteredReminders}
-          keyExtractor={item => item.id}
-          style={styles.list}
-          renderItem={({ item }) => (
-            <View style={[styles.reminderRow, isDark && { backgroundColor: COLORS.darkCard }]}>
-              <Text style={[styles.reminderText, isDark && { color: COLORS.darkText }]}>{item.vehicle}</Text>
-              <Text style={[styles.reminderText, isDark && { color: COLORS.darkText }]}>{item.nextServiceType}</Text>
-              <Text style={[styles.reminderText, isDark && { color: COLORS.darkText }]}>{item.nextServiceDate}</Text>
-            </View>
-          )}
-          ListHeaderComponent={
-            <View style={[styles.reminderHeader, isDark && { backgroundColor: '#23272f' }]}>
-              <Text style={[styles.reminderText, isDark && { color: COLORS.darkText }]}>Vehicle</Text>
-              <Text style={[styles.reminderText, isDark && { color: COLORS.darkText }]}>Upcoming Service</Text>
-              <Text style={[styles.reminderText, isDark && { color: COLORS.darkText }]}>Due Date</Text>
-            </View>
-          }
-          ListEmptyComponent={
-            <Text style={[styles.noReminders, isDark && { color: COLORS.darkText }]}>No upcoming maintenance found.</Text>
-          }
-        />
+        {loading ? (
+          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 24 }} />
+        ) : (
+          <FlatList
+            data={filteredReminders}
+            keyExtractor={item => item.id}
+            style={styles.list}
+            renderItem={({ item }) => (
+              <View style={[styles.reminderRow, isDark && { backgroundColor: COLORS.darkCard }]}>
+                <Text style={[styles.reminderText, isDark && { color: COLORS.darkText }]}>{item.vehicle}</Text>
+                <Text style={[styles.reminderText, isDark && { color: COLORS.darkText }]}>{item.nextServiceType}</Text>
+                <Text style={[styles.reminderText, isDark && { color: COLORS.darkText }]}>{item.nextServiceDate}</Text>
+              </View>
+            )}
+            ListHeaderComponent={
+              <View style={[styles.reminderHeader, isDark && { backgroundColor: '#23272f' }]}>
+                <Text style={[styles.reminderText, isDark && { color: COLORS.darkText }]}>Vehicle</Text>
+                <Text style={[styles.reminderText, isDark && { color: COLORS.darkText }]}>Upcoming Service</Text>
+                <Text style={[styles.reminderText, isDark && { color: COLORS.darkText }]}>Due Date</Text>
+              </View>
+            }
+            ListEmptyComponent={
+              <View style={{ alignItems: 'center', marginTop: 32 }}>
+                <MaterialIcons name="event-busy" size={48} color={COLORS.gray} style={{ marginBottom: 8 }} />
+                <Text style={[styles.noReminders, isDark && { color: COLORS.darkText }]}>No upcoming maintenance found.</Text>
+              </View>
+            }
+          />
+        )}
       </View>
 
       {/* Dashboard Section */}
@@ -198,6 +228,13 @@ export default function HomeScreen() {
           />
         </View>
       </View>
+
+      {/* Toast */}
+      {toast ? (
+        <View style={styles.toast}>
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -234,8 +271,8 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   logo: {
-    width: 180,      // Increased size
-    height: 72,      // Increased size
+    width: 180,
+    height: 72,
     marginBottom: 0,
   },
   themeToggle: {
@@ -338,5 +375,26 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     minWidth: 0,
+  },
+  toast: {
+    position: 'absolute',
+    bottom: 32,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  toastText: {
+    backgroundColor: COLORS.accent,
+    color: '#fff',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 24,
+    fontWeight: 'bold',
+    fontSize: 16,
+    elevation: 4,
+    shadowColor: COLORS.accent,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
   },
 });

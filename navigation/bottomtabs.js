@@ -83,9 +83,12 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     justifyContent: 'space-around',
     alignItems: 'center',
+    overflow: 'hidden',
   },
   tabBarDark: {
     backgroundColor: '#23272f',
+    marginTop: -18,
+    paddingTop: 26, // 8 + 18 to compensate for the negative margin
   },
   tab: {
     flex: 1,
