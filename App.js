@@ -1,63 +1,24 @@
-import React from 'react';
-import { StyleSheet, Text, View, Button, Alert } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { StatusBar } from 'expo-status-bar';
-import './firebaseConfig';
-import { getDatabase, ref, set } from 'firebase/database';
-
-// Screens
-import HomeScreen from './screens/HomeScreen';
-import VehicleScreen from './screens/Vehicle';
-import MaintenanceScreen from './screens/Maintenance';
-
-const Tab = createBottomTabNavigator();
-
-function FirebaseTestScreen() {
-  const testFirebase = async () => {
-    try {
-      const db = getDatabase();
-      await set(ref(db, 'test'), {
-        timestamp: Date.now(),
-        message: 'Hello from Fleetman!',
-      });
-      Alert.alert('✅ Firebase write succeeded!');
-    } catch (e) {
-      Alert.alert('❌ Firebase write failed: ' + e.message);
-    }
-  };
-
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>🚀 Hello from Expo!</Text>
-      <Button title="Test Firebase" onPress={testFirebase} />
-      <StatusBar style="auto" />
-    </View>
-  );
-}
+import React, { useState, useMemo } from 'react';
+import { StatusBar, useColorScheme } from 'react-native';
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
+import CustomBottomTabs from './navigation/bottomtabs';
+import { ThemeContext } from './ThemeContext';
+import './firebase'; // Ensure Firebase is initialized
 
 export default function App() {
+  const systemScheme = useColorScheme();
+  const [theme, setTheme] = useState(systemScheme === 'dark' ? 'dark' : 'light');
+  const themeObj = useMemo(() => ({
+    theme,
+    toggleTheme: () => setTheme(t => (t === 'dark' ? 'light' : 'dark')),
+  }), [theme]);
+
   return (
-    <NavigationContainer>
-      <Tab.Navigator>
-        <Tab.Screen name="Home" component={HomeScreen} />
-        <Tab.Screen name="Vehicle" component={VehicleScreen} />
-        <Tab.Screen name="Maintenance" component={MaintenanceScreen} />
-      </Tab.Navigator>
-      <StatusBar style="auto" />
-    </NavigationContainer>
+    <ThemeContext.Provider value={themeObj}>
+      <NavigationContainer theme={theme === 'dark' ? DarkTheme : DefaultTheme}>
+        <CustomBottomTabs />
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+      </NavigationContainer>
+    </ThemeContext.Provider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: 24,
-    marginBottom: 20,
-  },
-});

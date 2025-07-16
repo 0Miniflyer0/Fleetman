@@ -1,16 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
     View,
     Text,
     TextInput,
-    Button,
     FlatList,
     TouchableOpacity,
     Modal,
     StyleSheet,
     Alert,
+    Pressable,
+    Image,
 } from 'react-native';
 import { getDatabase, ref, onValue, update } from 'firebase/database';
+import { MaterialIcons } from '@expo/vector-icons';
+import { ThemeContext } from '../ThemeContext';
+import '../firebase'; // Ensure Firebase is initialized
+
+const COLORS = {
+    primary: '#1A73E8',
+    accent: '#FBBC05',
+    danger: '#EA4335',
+    background: '#F4F6FB',
+    card: '#FFFFFF',
+    text: '#222B45',
+    gray: '#888',
+    darkBg: '#181a20',
+    darkCard: '#23272f',
+    darkText: '#f4f6fb',
+};
 
 export default function MaintenanceScreen() {
     const [records, setRecords] = useState([]);
@@ -23,16 +40,17 @@ export default function MaintenanceScreen() {
     const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState({ record: null, index: null });
 
+    const { theme, toggleTheme } = useContext(ThemeContext);
+    const isDark = theme === 'dark';
+
     // Fetch vehicles from Firebase
     useEffect(() => {
         const db = getDatabase();
         const vehiclesRef = ref(db, 'fleetOne');
-        const unsubscribe = onValue(vehiclesRef, (snapshot) => {
+        const unsubscribe = onValue(vehiclesRef, snapshot => {
             const data = snapshot.val();
             if (data) {
-                // Flatten vehicles into records for display
                 const loaded = Object.values(data).map(vehicle => {
-                    // Sort serviceHistory by date descending (most recent first)
                     const history = Array.isArray(vehicle.maintence?.serviceHistory)
                         ? [...vehicle.maintence.serviceHistory].sort((a, b) => b.date.localeCompare(a.date))
                         : [];
@@ -78,28 +96,23 @@ export default function MaintenanceScreen() {
         let serviceHistory = Array.isArray(vehicle.serviceHistory) ? [...vehicle.serviceHistory] : [];
 
         if (selectedRecord && selectedRecord.editIndex !== undefined) {
-            // Edit the selected record by index
             serviceHistory[selectedRecord.editIndex] = {
                 date: form.date,
                 details: form.service,
             };
         } else {
-            // Add new record
             serviceHistory.push({
                 date: form.date,
                 details: form.service,
             });
         }
 
-        // Sort serviceHistory by date descending after edit/add
         serviceHistory = serviceHistory.sort((a, b) => b.date.localeCompare(a.date));
 
-        // Update serviceHistory and lastServiceDate in maintence
         await update(ref(db, `fleetOne/${dbKey}/maintence`), {
             serviceHistory,
             lastServiceDate: serviceHistory[0]?.date || form.date,
         });
-        // Update mileage in the vehicle root (not inside maintence)
         await update(ref(db, `fleetOne/${dbKey}`), {
             mileage: Number(form.mileage),
         });
@@ -108,19 +121,48 @@ export default function MaintenanceScreen() {
         setDetailModalVisible(false);
     };
 
-    // Delete record (local only, not deleted from Firebase)
-    const handleDelete = id => {
-        Alert.alert('Delete Record', 'Are you sure?', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Delete',
-                style: 'destructive',
-                onPress: () => {
-                    setRecords(records.filter(r => r.id !== id));
-                    setDetailModalVisible(false);
-                },
-            },
-        ]);
+    // Delete maintenance record from Firebase
+    const doDeleteMaintenance = async (record, index) => {
+        if (!record) return;
+        const db = getDatabase();
+        const dbKey = record.dbKey;
+        let updatedHistory = [...(record.serviceHistory || [])];
+        updatedHistory.splice(index, 1);
+
+        await update(ref(db, `fleetOne/${dbKey}/maintence`), {
+            serviceHistory: updatedHistory,
+            lastServiceDate: updatedHistory[0]?.date || '',
+        });
+
+        setRecords(prev =>
+            prev.map(r =>
+                r.id === record.id
+                    ? {
+                        ...r,
+                        serviceHistory: updatedHistory,
+                        service: updatedHistory[0]?.details || 'N/A',
+                    }
+                    : r
+            )
+        );
+
+        setSelectedRecord(prev =>
+            prev
+                ? {
+                    ...prev,
+                    serviceHistory: updatedHistory,
+                    service: updatedHistory[0]?.details || 'N/A',
+                }
+                : prev
+        );
+
+        if (index === 0) {
+            setForm(form => ({
+                ...form,
+                service: updatedHistory[0]?.details || '',
+                date: updatedHistory[0]?.date || '',
+            }));
+        }
     };
 
     // Open detail modal
@@ -155,98 +197,83 @@ export default function MaintenanceScreen() {
         setDetailModalVisible(false);
     };
 
-    const doDeleteMaintenance = async (record, index) => {
-        if (!record) return;
-        const db = getDatabase();
-        const dbKey = record.dbKey;
-        let updatedHistory = [...(record.serviceHistory || [])];
-        updatedHistory.splice(index, 1);
-
-        // Update Firebase
-        await update(ref(db, `fleetOne/${dbKey}/maintence`), {
-            serviceHistory: updatedHistory,
-            lastServiceDate: updatedHistory[0]?.date || '',
-        });
-
-        // Update local state and selectedRecord for modal
-        setRecords(prev =>
-            prev.map(r =>
-                r.id === record.id
-                    ? {
-                          ...r,
-                          serviceHistory: updatedHistory,
-                          service: updatedHistory[0]?.details || 'N/A',
-                      }
-                    : r
-            )
-        );
-
-        setSelectedRecord(prev =>
-            prev
-                ? {
-                      ...prev,
-                      serviceHistory: updatedHistory,
-                      service: updatedHistory[0]?.details || 'N/A',
-                  }
-                : prev
-        );
-
-        if (index === 0) {
-            setForm(form => ({
-                ...form,
-                service: updatedHistory[0]?.details || '',
-                date: updatedHistory[0]?.date || '',
-            }));
-        }
-    };
-
     return (
-        <View style={styles.container}>
-            {/* Search Bar */}
-            <TextInput
-                style={styles.searchBar}
-                placeholder="Search maintenance records..."
-                value={search}
-                onChangeText={setSearch}
-            />
-
-            {/* Add Button */}
-            <Button title="Add Maintenance Record" onPress={openAdd} />
-
-            {/* Sort Options */}
-            <View style={styles.sortRow}>
-                <Text style={styles.sortLabel}>Sort by:</Text>
-                <Button title="Vehicle" onPress={() => setSortKey('vehicle')} />
-                <Button title="Service" onPress={() => setSortKey('service')} />
-                <Button title="Mileage" onPress={() => setSortKey('mileage')} />
+        <View style={[styles.container, isDark && { backgroundColor: COLORS.darkBg }]}>
+            {/* Logo Bar */}
+            <View style={[styles.logoBar, isDark && { backgroundColor: COLORS.darkCard }]}>
+                <Image
+                    source={require('../images/FleetMan_logo 1.png')}
+                    style={styles.logo}
+                    resizeMode="contain"
+                />
+                <TouchableOpacity style={styles.themeToggle} onPress={toggleTheme}>
+                    <MaterialIcons name={isDark ? 'dark-mode' : 'light-mode'} size={32} color={isDark ? COLORS.accent : COLORS.primary} />
+                </TouchableOpacity>
             </View>
 
-            {/* Maintenance List */}
+            {/* Title Bar */}
+            <View style={[styles.titleBar, isDark && { backgroundColor: COLORS.darkCard }]}>
+                <Text style={[styles.titleText, isDark && { color: COLORS.darkText }]}>Maintenance</Text>
+            </View>
+
+            {/* Search Bar */}
+            <View style={[styles.searchRow, isDark && { backgroundColor: '#23272f' }]}>
+                <MaterialIcons name="search" size={22} color={isDark ? COLORS.darkText : COLORS.gray} style={{ marginRight: 8 }} />
+                <TextInput
+                    style={[styles.searchBar, isDark && { color: COLORS.darkText }]}
+                    placeholder="Search maintenance records..."
+                    placeholderTextColor={isDark ? '#aaa' : COLORS.gray}
+                    value={search}
+                    onChangeText={setSearch}
+                />
+            </View>
+
+            {/* Sort Dropdown */}
+            <View style={styles.sortRow}>
+                <Text style={styles.sortLabel}>Sort by:</Text>
+                <Pressable onPress={() => setSortKey('vehicle')}>
+                    <Text style={[styles.sortOption, sortKey === 'vehicle' && styles.sortActive]}>Vehicle</Text>
+                </Pressable>
+                <Pressable onPress={() => setSortKey('service')}>
+                    <Text style={[styles.sortOption, sortKey === 'service' && styles.sortActive]}>Service</Text>
+                </Pressable>
+                <Pressable onPress={() => setSortKey('mileage')}>
+                    <Text style={[styles.sortOption, sortKey === 'mileage' && styles.sortActive]}>Mileage</Text>
+                </Pressable>
+            </View>
+
+            {/* Maintenance Cards */}
             <FlatList
                 data={filteredRecords}
                 keyExtractor={item => item.id}
-                style={styles.list}
+                contentContainerStyle={{ paddingBottom: 80 }}
                 renderItem={({ item }) => (
-                    <TouchableOpacity style={styles.row} onPress={() => openDetail(item)}>
-                        <Text style={styles.cell}>{item.vehicle}</Text>
-                        <Text style={styles.cell}>{item.service}</Text>
-                        <Text style={styles.cell}>{item.mileage}</Text>
+                    <TouchableOpacity style={[styles.card, isDark && { backgroundColor: COLORS.darkCard }]} onPress={() => openDetail(item)}>
+                        <View style={styles.cardRow}>
+                            <MaterialIcons name="directions-car" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
+                            <Text style={[styles.cardTitle, isDark && { color: COLORS.darkText }]}>{item.vehicle}</Text>
+                        </View>
+                        <Text style={[styles.cardSub, isDark && { color: COLORS.darkText }]}>
+                            Service: <Text style={{ color: COLORS.accent }}>{item.service}</Text>
+                        </Text>
+                        <Text style={[styles.cardSub, isDark && { color: COLORS.darkText }]}>
+                            Mileage: <Text style={{ color: COLORS.primary }}>{item.mileage}</Text>
+                        </Text>
                     </TouchableOpacity>
                 )}
-                ListHeaderComponent={
-                    <View style={styles.headerRow}>
-                        <Text style={[styles.cell, styles.headerCell]}>Vehicle</Text>
-                        <Text style={[styles.cell, styles.headerCell]}>Service Type</Text>
-                        <Text style={[styles.cell, styles.headerCell]}>Mileage</Text>
-                    </View>
-                }
+                ListEmptyComponent={<Text style={[styles.emptyText, isDark && { color: COLORS.darkText }]}>No maintenance records found.</Text>}
             />
+
+            {/* Floating Action Button */}
+            <TouchableOpacity style={[styles.fab, isDark && { backgroundColor: COLORS.accent }]} onPress={openAdd} accessibilityLabel="Add Maintenance Record">
+                <MaterialIcons name="add" size={32} color="#fff" />
+            </TouchableOpacity>
 
             {/* Add/Edit Modal */}
             <Modal visible={modalVisible} animationType="slide" transparent>
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>
+                    <View style={[styles.modalContent, isDark && { backgroundColor: COLORS.darkCard }]}>
+                        <Text style={[styles.modalTitle, isDark && { color: COLORS.accent }]}>
                             {selectedRecord ? 'Edit Record' : 'Add Maintenance Record'}
                         </Text>
                         <TextInput
@@ -254,12 +281,14 @@ export default function MaintenanceScreen() {
                             placeholder="Vehicle"
                             value={form.vehicle}
                             onChangeText={text => setForm({ ...form, vehicle: text })}
+                            placeholderTextColor={COLORS.gray}
                         />
                         <TextInput
                             style={styles.input}
                             placeholder="Service Type"
                             value={form.service}
                             onChangeText={text => setForm({ ...form, service: text })}
+                            placeholderTextColor={COLORS.gray}
                         />
                         <TextInput
                             style={styles.input}
@@ -267,16 +296,22 @@ export default function MaintenanceScreen() {
                             value={form.mileage}
                             keyboardType="numeric"
                             onChangeText={text => setForm({ ...form, mileage: text })}
+                            placeholderTextColor={COLORS.gray}
                         />
                         <TextInput
                             style={styles.input}
                             placeholder="Date (YYYY-MM-DD)"
                             value={form.date}
                             onChangeText={text => setForm({ ...form, date: text })}
+                            placeholderTextColor={COLORS.gray}
                         />
                         <View style={styles.modalButtonRow}>
-                            <Button title="Cancel" onPress={() => setModalVisible(false)} />
-                            <Button title="Save" onPress={handleSave} />
+                            <Pressable style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
+                                <Text style={styles.cancelBtnText}>Cancel</Text>
+                            </Pressable>
+                            <Pressable style={styles.saveBtn} onPress={handleSave}>
+                                <Text style={styles.saveBtnText}>Save</Text>
+                            </Pressable>
                         </View>
                     </View>
                 </View>
@@ -285,39 +320,44 @@ export default function MaintenanceScreen() {
             {/* Detail/Edit Modal */}
             <Modal visible={detailModalVisible} animationType="slide" transparent>
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Maintenance Details</Text>
-                        <Text>Vehicle: {form.vehicle}</Text>
-                        <Text>Service: {form.service}</Text>
-                        <Text>Mileage: {form.mileage}</Text>
-                        <Text style={{ marginTop: 10, fontWeight: 'bold' }}>Service History:</Text>
+                    <View style={[styles.modalContent, isDark && { backgroundColor: COLORS.darkCard }]}>
+                        <Text style={[styles.modalTitle, isDark && { color: COLORS.accent }]}>Maintenance Details</Text>
+                        <Text style={isDark && { color: COLORS.darkText }}>Vehicle: {form.vehicle}</Text>
+                        <Text style={isDark && { color: COLORS.darkText }}>Service: {form.service}</Text>
+                        <Text style={isDark && { color: COLORS.darkText }}>Mileage: {form.mileage}</Text>
+                        <Text style={{ marginTop: 10, fontWeight: 'bold', color: isDark ? COLORS.darkText : COLORS.text }}>Service History:</Text>
                         <FlatList
                             data={selectedRecord?.serviceHistory || []}
                             keyExtractor={(_, idx) => idx.toString()}
                             renderItem={({ item, index }) => (
                                 <View style={{ marginBottom: 6 }}>
-                                    <Text>Date: {item.date}</Text>
-                                    <Text>Service: {item.details}</Text>
+                                    <Text style={isDark && { color: COLORS.darkText }}>Date: {item.date}</Text>
+                                    <Text style={isDark && { color: COLORS.darkText }}>Service: {item.details}</Text>
                                     <View style={{ flexDirection: 'row', gap: 8 }}>
-                                        <Button
-                                            title="Edit"
+                                        <Pressable
+                                            style={styles.saveBtn}
                                             onPress={() => openEditMaintenance(selectedRecord, item, index)}
-                                        />
-                                        <Button
-                                            title="Delete"
-                                            color="red"
+                                        >
+                                            <Text style={styles.saveBtnText}>Edit</Text>
+                                        </Pressable>
+                                        <Pressable
+                                            style={styles.deleteBtn}
                                             onPress={() => {
                                                 setDeleteTarget({ record: selectedRecord, index });
                                                 setDeleteConfirmVisible(true);
                                             }}
-                                        />
+                                        >
+                                            <Text style={styles.deleteBtnText}>Delete</Text>
+                                        </Pressable>
                                     </View>
                                 </View>
                             )}
-                            ListEmptyComponent={<Text>No previous maintenance records.</Text>}
+                            ListEmptyComponent={<Text style={isDark && { color: COLORS.darkText }}>No previous maintenance records.</Text>}
                         />
                         <View style={styles.modalButtonRow}>
-                            <Button title="Close" onPress={() => setDetailModalVisible(false)} />
+                            <Pressable style={styles.cancelBtn} onPress={() => setDetailModalVisible(false)}>
+                                <Text style={styles.cancelBtnText}>Close</Text>
+                            </Pressable>
                         </View>
                     </View>
                 </View>
@@ -325,64 +365,124 @@ export default function MaintenanceScreen() {
 
             {/* Delete Confirmation Modal */}
             <Modal visible={deleteConfirmVisible} transparent animationType="fade">
-    <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { alignItems: 'center' }]}>
-            <Text style={{ fontWeight: 'bold', marginBottom: 16 }}>
-                Are you sure you want to delete this maintenance record?
-            </Text>
-            <View style={styles.modalButtonRow}>
-                <Button
-                    title="Cancel"
-                    onPress={() => setDeleteConfirmVisible(false)}
-                />
-                <Button
-                    title="Delete"
-                    color="red"
-                    onPress={async () => {
-                        await doDeleteMaintenance(deleteTarget.record, deleteTarget.index);
-                        setDeleteConfirmVisible(false);
-                    }}
-                />
-            </View>
-        </View>
-    </View>
-</Modal>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { alignItems: 'center' }, isDark && { backgroundColor: COLORS.darkCard }]}>
+                        <Text style={{ fontWeight: 'bold', marginBottom: 16, color: isDark ? COLORS.darkText : COLORS.text }}>
+                            Are you sure you want to delete this maintenance record?
+                        </Text>
+                        <View style={styles.modalButtonRow}>
+                            <Pressable style={styles.cancelBtn} onPress={() => setDeleteConfirmVisible(false)}>
+                                <Text style={styles.cancelBtnText}>Cancel</Text>
+                            </Pressable>
+                            <Pressable
+                                style={styles.deleteBtn}
+                                onPress={async () => {
+                                    await doDeleteMaintenance(deleteTarget.record, deleteTarget.index);
+                                    setDeleteConfirmVisible(false);
+                                }}
+                            >
+                                <Text style={styles.deleteBtnText}>Delete</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 16, backgroundColor: '#fff' },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    logoBar: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'flex-start',
+        paddingTop: 32,
+        paddingBottom: 8,
+        paddingLeft: 18,
+        backgroundColor: COLORS.card,
+        position: 'relative',
+    },
+    logo: {
+        width: 180,      // Increased size
+        height: 72,      // Increased size
+        marginBottom: 0,
+    },
+    themeToggle: {
+        position: 'absolute',
+        right: 18,
+        top: 32,
+        padding: 4,
+    },
+    titleBar: {
+        backgroundColor: COLORS.card,
+        paddingVertical: 10,
+        alignItems: 'center',
+        borderBottomWidth: 1,
+        borderBottomColor: '#e3e3e3',
+    },
+    titleText: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        color: COLORS.accent,
+        letterSpacing: 1,
+    },
+    searchRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#e9eef6',
+        borderRadius: 10,
+        margin: 16,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+    },
     searchBar: {
-        borderWidth: 1,
-        borderColor: '#ccc',
-        borderRadius: 8,
-        padding: 8,
-        marginBottom: 12,
+        flex: 1,
+        fontSize: 16,
+        backgroundColor: 'transparent',
+        borderWidth: 0,
+        color: COLORS.text,
     },
     sortRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        marginHorizontal: 16,
         marginBottom: 8,
         gap: 8,
     },
-    sortLabel: { marginRight: 8, fontWeight: 'bold' },
-    list: { flex: 1 },
-    headerRow: {
-        flexDirection: 'row',
-        backgroundColor: '#eee',
-        paddingVertical: 6,
-        borderTopLeftRadius: 8,
-        borderTopRightRadius: 8,
+    sortLabel: { fontWeight: 'bold', color: COLORS.text, marginRight: 8 },
+    sortOption: { color: COLORS.gray, marginRight: 12, fontWeight: '600' },
+    sortActive: { color: COLORS.accent, textDecorationLine: 'underline' },
+    card: {
+        backgroundColor: COLORS.card,
+        borderRadius: 12,
+        marginHorizontal: 16,
+        marginVertical: 6,
+        padding: 18,
+        shadowColor: COLORS.primary,
+        shadowOpacity: 0.07,
+        shadowRadius: 6,
+        elevation: 2,
     },
-    headerCell: { fontWeight: 'bold' },
-    row: {
-        flexDirection: 'row',
-        paddingVertical: 10,
-        borderBottomWidth: 1,
-        borderColor: '#eee',
+    cardRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+    cardTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.text },
+    cardSub: { color: '#666', fontSize: 15 },
+    fab: {
+        position: 'absolute',
+        right: 24,
+        bottom: 32,
+        backgroundColor: COLORS.accent,
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        alignItems: 'center',
+        justifyContent: 'center',
+        elevation: 6,
+        shadowColor: COLORS.accent,
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
     },
-    cell: { flex: 1, textAlign: 'center' },
+    emptyText: { textAlign: 'center', color: COLORS.gray, marginTop: 40, fontSize: 16 },
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.3)',
@@ -391,18 +491,21 @@ const styles = StyleSheet.create({
     },
     modalContent: {
         width: '90%',
-        backgroundColor: '#fff',
+        backgroundColor: COLORS.card,
         borderRadius: 12,
         padding: 20,
         elevation: 5,
     },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12 },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12, color: COLORS.accent },
     input: {
         borderWidth: 1,
         borderColor: '#ccc',
         borderRadius: 8,
         padding: 8,
         marginBottom: 10,
+        fontSize: 16,
+        backgroundColor: '#f7f7f7',
+        color: COLORS.text,
     },
     modalButtonRow: {
         flexDirection: 'row',
@@ -410,4 +513,25 @@ const styles = StyleSheet.create({
         marginTop: 10,
         gap: 8,
     },
+    saveBtn: {
+        backgroundColor: COLORS.accent,
+        borderRadius: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 18,
+    },
+    saveBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+    cancelBtn: {
+        backgroundColor: '#e0e0e0',
+        borderRadius: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 18,
+    },
+    cancelBtnText: { color: COLORS.text, fontWeight: 'bold', fontSize: 16 },
+    deleteBtn: {
+        backgroundColor: COLORS.danger,
+        borderRadius: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 18,
+    },
+    deleteBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
 });
