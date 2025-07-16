@@ -11,18 +11,19 @@ export default function HomeScreen() {
 
   useEffect(() => {
     const db = getDatabase();
-    // Adjust the path if your fleet name is dynamic
     const vehiclesRef = ref(db, 'fleetOne');
     const unsubscribe = onValue(vehiclesRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        // Flatten vehicles into reminders
-        const loaded = Object.values(data).map(vehicle => ({
-          id: vehicle.id,
-          vehicle: vehicle.name,
-          service: vehicle.maintence?.serviceHistory?.[vehicle.maintence?.serviceHistory.length - 1]?.details || 'N/A',
-          due: vehicle.maintence?.nextServiceDue || 'N/A',
-        }));
+        // Upcoming maintenance reminders
+        const loaded = Object.values(data)
+          .map(vehicle => ({
+            id: vehicle.id,
+            vehicle: vehicle.name,
+            nextServiceType: vehicle.maintence?.nextServiceType || 'N/A',
+            nextServiceDate: vehicle.maintence?.nextServiceDate || 'N/A',
+          }))
+          .filter(reminder => reminder.nextServiceDate !== 'N/A');
         setReminders(loaded);
       } else {
         setReminders([]);
@@ -32,19 +33,17 @@ export default function HomeScreen() {
   }, []);
 
   const filteredReminders = reminders
-    .slice() // create a shallow copy to avoid mutating state
+    .slice()
     .sort((a, b) => {
-      // If either due is 'N/A', push it to the end
-      if (a.due === 'N/A') return 1;
-      if (b.due === 'N/A') return -1;
-      // Compare as dates
-      return new Date(a.due) - new Date(b.due);
+      if (a.nextServiceDate === 'N/A') return 1;
+      if (b.nextServiceDate === 'N/A') return -1;
+      return new Date(a.nextServiceDate) - new Date(b.nextServiceDate);
     })
     .filter(
       r =>
         r.vehicle?.toLowerCase().includes(search.toLowerCase()) ||
-        r.service?.toLowerCase().includes(search.toLowerCase()) ||
-        r.due?.includes(search)
+        r.nextServiceType?.toLowerCase().includes(search.toLowerCase()) ||
+        r.nextServiceDate?.includes(search)
     )
     .slice(0, 5);
 
@@ -70,19 +69,19 @@ export default function HomeScreen() {
           renderItem={({ item }) => (
             <View style={styles.reminderRow}>
               <Text style={styles.reminderText}>{item.vehicle}</Text>
-              <Text style={styles.reminderText}>{item.service}</Text>
-              <Text style={styles.reminderText}>{item.due}</Text>
+              <Text style={styles.reminderText}>{item.nextServiceType}</Text>
+              <Text style={styles.reminderText}>{item.nextServiceDate}</Text>
             </View>
           )}
           ListHeaderComponent={
             <View style={styles.reminderHeader}>
               <Text style={styles.reminderText}>Vehicle</Text>
-              <Text style={styles.reminderText}>Service</Text>
+              <Text style={styles.reminderText}>Upcoming Service</Text>
               <Text style={styles.reminderText}>Due Date</Text>
             </View>
           }
           ListEmptyComponent={
-            <Text style={styles.noReminders}>No reminders found.</Text>
+            <Text style={styles.noReminders}>No upcoming maintenance found.</Text>
           }
         />
       </View>
